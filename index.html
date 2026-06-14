@@ -1688,8 +1688,7 @@ async function saveOrder(){
     document.getElementById('success').classList.add('show');
     const sm=document.getElementById('succMsg');if(sm){sm.textContent='Order number assigned by the database';sm.style.color='';}
     if(photoFail)toast(photoFail+' photo(s) failed to upload — check the order-photos bucket/policy');
-    // Notify every staff device (works even when their app is closed)
-    firePush({type:'INSERT',record:{order_number:order.order_number,name_snapshot:order.name_snapshot||newName||'walk-in',total_amount:total}});
+    // Push notifications are now fired server-side by the orders Database Webhook.
     // Remember the special instruction as a customer preference for their next order
     const _instr=(g('newInstr')||'').trim();
     if(_instr){ try{ await sb.from('customers').update({special_notes:_instr}).eq('phone',phone); }catch(noteErr){ console.warn('could not save customer note:',noteErr); } }
@@ -2014,7 +2013,7 @@ async function ovSaveStatus(){
       if(up.error){console.error('status update:',up.error);toast('Status update failed (see console)');if(btn){btn.disabled=false;btn.textContent=oldt;}return;}
       if(note)toast('Status saved — note needs migration 05 applied');
     }
-    firePush({type:'UPDATE',record:{order_number:o.id,name_snapshot:o.name,order_status:v,total_amount:o.total},old_record:{order_status:prevStatus}});
+    // Push notifications are now fired server-side by the orders Database Webhook.
     if(v==='Delivered'){ const dd=dhakaDateStr(); try{ await sb.from('orders').update({delivery_date:dd}).eq('id',o.dbid); o.deliveryDate=dd; }catch(ddErr){ console.warn('could not stamp delivery_date:',ddErr); } }
     o.status=v;o.sc=statusClass(v);pendingStatus=null;
     const bdg=document.getElementById('ovHeadBadge');if(bdg){bdg.className='badge '+o.sc;bdg.innerHTML='<i></i> '+v;}
@@ -2550,12 +2549,6 @@ async function refreshPushDiag(){
   const iOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
   if(iOS && !standalone) L.push(warn+'On iPhone: add to Home Screen for push to work');
   el.innerHTML=L.join('<br>');
-}
-function firePush(payload){
-  // Fire-and-forget: tell the send-push Edge Function directly from the app.
-  // This removes the need for a Database Webhook — any order created or
-  // status changed through the app notifies every registered device.
-  try{ if(sb) sb.functions.invoke('send-push',{body:payload}).catch(e=>console.warn('push:',e)); }catch(e){ console.warn('push:',e); }
 }
 async function sendTestPush(){
   if(!sb){toast('Not connected');return;}
