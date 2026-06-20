@@ -2558,14 +2558,14 @@ function firePush(payload){
   // Calls the send-push Edge Function (the proven path behind the test button).
   // Fires whenever an order is created or its status changes in the app, so every
   // registered device is notified even when its app is closed.
-  try{ if(sb) sb.functions.invoke('send-push',{body:payload}).catch(e=>console.warn('push:',e)); }catch(e){ console.warn('push:',e); }
+  try{ if(sb) sb.functions.invoke('dynamic-processor',{body:payload}).catch(e=>console.warn('push:',e)); }catch(e){ console.warn('push:',e); }
 }
 async function sendTestPush(){
   if(!sb){toast('Not connected');return;}
   if(('Notification' in window) && Notification.permission!=='granted'){ toast('Turn on Push notifications first (grant permission)'); return; }
   toast('Sending test push…');
   try{
-    const {data,error}=await sb.functions.invoke('send-push',{body:{type:'INSERT',record:{order_number:'TEST-PUSH',name_snapshot:'Test notification',total_amount:0}}});
+    const {data,error}=await sb.functions.invoke('dynamic-processor',{body:{type:'INSERT',record:{order_number:'TEST-PUSH',name_snapshot:'Test notification',total_amount:0}}});
     if(error){ console.error('test push:',error); toast('Function error — likely not deployed yet (see PUSH_SETUP step 3)'); return; }
     const msg=(data&&data.msg)?data.msg:'sent';
     toast('Server responded: '+msg+'. Check your phone tray.');
@@ -2600,7 +2600,7 @@ async function diagnosePush(){
   // 6. real server push through the exact path the app uses
   const i=add(Y+' Sending a real push through the server…');
   try{
-    const {data,error}=await sb.functions.invoke('send-push',{body:{type:'INSERT',record:{order_number:'TEST',name_snapshot:'Test',total_amount:0}}});
+    const {data,error}=await sb.functions.invoke('dynamic-processor',{body:{type:'INSERT',record:{order_number:'TEST',name_snapshot:'Test',total_amount:0}}});
     if(error){ set(i,R+' The app could NOT reach send-push ('+(error.message||error)+') — the function isn’t deployed, or JWT verification is on for it.'); return; }
     const m=String((data&&data.msg)||'');
     if(/sent\s+([1-9]\d*)\//.test(m)) set(i,G+' Server sent it ('+m+'). If the banner didn’t appear, it’s battery optimization — set this app to “Unrestricted” in Android battery settings.');
