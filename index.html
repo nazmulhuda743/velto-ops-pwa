@@ -1096,6 +1096,8 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
       <button class="btn-link" id="reqPermBtn" style="display:none" onclick="requestBrowserPerm()">Enable push notifications →</button>
       <div id="pushDiag" style="font-size:11px;color:var(--tx-3);line-height:1.75;margin:10px 0 2px;padding:11px 13px;background:var(--card);border:1px solid var(--bd);border-radius:11px"></div>
       <button class="btn-link" onclick="sendTestPush()" style="margin-top:6px">📲 Send a test push to my phone</button>
+      <button class="btn-link" id="diagFixBtn" onclick="diagnosePush()" style="margin-top:6px;font-weight:700">🔧 Diagnose &amp; fix notifications</button>
+      <div id="pushFix" style="font-size:12px;line-height:1.7;margin:8px 0 2px"></div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:14px;border-top:1px solid var(--bd)">
         <button class="btn-link" onclick="testChime()">🔔 Test sound</button>
         <span id="rtStatus" style="font-size:10.5px;color:var(--tx-3)">Realtime: —</span>
@@ -1688,7 +1690,8 @@ async function saveOrder(){
     document.getElementById('success').classList.add('show');
     const sm=document.getElementById('succMsg');if(sm){sm.textContent='Order number assigned by the database';sm.style.color='';}
     if(photoFail)toast(photoFail+' photo(s) failed to upload — check the order-photos bucket/policy');
-    // Push notifications are now fired server-side by the orders Database Webhook.
+    // Notify every registered staff device (works even when their app is closed)
+    firePush({type:'INSERT',record:{order_number:order.order_number,name_snapshot:order.name_snapshot||newName||'walk-in',total_amount:total}});
     // Remember the special instruction as a customer preference for their next order
     const _instr=(g('newInstr')||'').trim();
     if(_instr){ try{ await sb.from('customers').update({special_notes:_instr}).eq('phone',phone); }catch(noteErr){ console.warn('could not save customer note:',noteErr); } }
@@ -2013,7 +2016,8 @@ async function ovSaveStatus(){
       if(up.error){console.error('status update:',up.error);toast('Status update failed (see console)');if(btn){btn.disabled=false;btn.textContent=oldt;}return;}
       if(note)toast('Status saved — note needs migration 05 applied');
     }
-    // Push notifications are now fired server-side by the orders Database Webhook.
+    // Notify every registered staff device (works even when their app is closed)
+    firePush({type:'UPDATE',record:{order_number:o.id,name_snapshot:o.name,order_status:v,total_amount:o.total},old_record:{order_status:prevStatus}});
     if(v==='Delivered'){ const dd=dhakaDateStr(); try{ await sb.from('orders').update({delivery_date:dd}).eq('id',o.dbid); o.deliveryDate=dd; }catch(ddErr){ console.warn('could not stamp delivery_date:',ddErr); } }
     o.status=v;o.sc=statusClass(v);pendingStatus=null;
     const bdg=document.getElementById('ovHeadBadge');if(bdg){bdg.className='badge '+o.sc;bdg.innerHTML='<i></i> '+v;}
@@ -2550,6 +2554,12 @@ async function refreshPushDiag(){
   if(iOS && !standalone) L.push(warn+'On iPhone: add to Home Screen for push to work');
   el.innerHTML=L.join('<br>');
 }
+function firePush(payload){
+  // Calls the send-push Edge Function (the proven path behind the test button).
+  // Fires whenever an order is created or its status changes in the app, so every
+  // registered device is notified even when its app is closed.
+  try{ if(sb) sb.functions.invoke('send-push',{body:payload}).catch(e=>console.warn('push:',e)); }catch(e){ console.warn('push:',e); }
+}
 async function sendTestPush(){
   if(!sb){toast('Not connected');return;}
   if(('Notification' in window) && Notification.permission!=='granted'){ toast('Turn on Push notifications first (grant permission)'); return; }
@@ -2560,6 +2570,43 @@ async function sendTestPush(){
     const msg=(data&&data.msg)?data.msg:'sent';
     toast('Server responded: '+msg+'. Check your phone tray.');
   }catch(e){ console.error('test push:',e); toast('Failed: '+(e.message||e)); }
+}
+async function diagnosePush(){
+  const box=document.getElementById('pushFix'); if(!box)return;
+  const steps=[]; const G='✅',R='❌',Y='⏳',W='⚠️';
+  const render=()=>{ box.innerHTML=steps.map(s=>`<div style="margin:4px 0">${s}</div>`).join(''); };
+  const add=(t)=>{ steps.push(t); render(); return steps.length-1; };
+  const set=(i,t)=>{ steps[i]=t; render(); };
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)){ add(R+' This browser can’t show push. On iPhone, add the app to the Home Screen and open it from there.'); return; }
+  if(!sb){ add(R+' Not connected to the server — open the app while online and signed in.'); return; }
+  // 1. permission
+  let perm=('Notification' in window)?Notification.permission:'unsupported';
+  if(perm==='default'){ const i=add(Y+' Asking for permission…'); try{ perm=await Notification.requestPermission(); }catch(e){} set(i,(perm==='granted'?G:R)+' Permission: '+perm); }
+  else add((perm==='granted'?G:R)+' Permission: '+perm);
+  if(perm!=='granted'){ add(R+' Notifications are blocked for this site. Turn them on in your browser/site settings, then tap again.'); return; }
+  const reg=await navigator.serviceWorker.ready;
+  // 2. local display test (proves the phone can show ANY notification)
+  try{ await reg.showNotification('Velto — display test',{body:'If you can see this, your phone can display notifications.',tag:'velto-diag'}); add(G+' Showed a local test notification — look at your tray now.'); }
+  catch(e){ add(R+' The phone blocked even a local notification — enable notifications for this app in your phone’s system settings.'); }
+  // 3. subscription (self-heal)
+  let sub=await reg.pushManager.getSubscription();
+  if(!sub){ const i=add(Y+' Subscribing this device…'); try{ sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:_urlB64ToUint8(VAPID_PUBLIC_KEY)}); set(i,G+' Subscribed this device.'); }catch(e){ set(i,R+' Could not subscribe: '+(e.message||e)); return; } }
+  else add(G+' This device is already subscribed.');
+  // 4. save to DB
+  const j=sub.toJSON();
+  if(j&&j.keys){ const {error}=await sb.rpc('save_push_subscription',{p_endpoint:sub.endpoint,p_p256dh:j.keys.p256dh,p_auth:j.keys.auth,p_ua:navigator.userAgent}); if(error){ add(R+' Saving the subscription failed: '+error.message+' — run add_push.sql in Supabase.'); return; } add(G+' Saved this device to the database.'); }
+  // 5. count
+  try{ const {count}=await sb.from('push_subscriptions').select('*',{count:'exact',head:true}); add(G+' Devices registered (all staff): '+(count||0)); }catch(e){}
+  // 6. real server push through the exact path the app uses
+  const i=add(Y+' Sending a real push through the server…');
+  try{
+    const {data,error}=await sb.functions.invoke('send-push',{body:{type:'INSERT',record:{order_number:'TEST',name_snapshot:'Test',total_amount:0}}});
+    if(error){ set(i,R+' The app could NOT reach send-push ('+(error.message||error)+') — the function isn’t deployed, or JWT verification is on for it.'); return; }
+    const m=String((data&&data.msg)||'');
+    if(/sent\s+([1-9]\d*)\//.test(m)) set(i,G+' Server sent it ('+m+'). If the banner didn’t appear, it’s battery optimization — set this app to “Unrestricted” in Android battery settings.');
+    else if(/sent\s+0\//.test(m)||/no subscrib/i.test(m)) set(i,R+' Server ran but reached 0 devices ('+m+') — the subscription was rejected, usually a VAPID key mismatch on the function (PUSH_SETUP step 3).');
+    else set(i,W+' Server said: “'+m+'”. Send this exact line to Claude.');
+  }catch(e){ set(i,R+' Call failed: '+(e.message||e)); }
 }
 async function disablePush(){
   try{
