@@ -1628,17 +1628,50 @@ function recomputeRef(){
 }
 function useRef(){document.getElementById('totAmt').value=lastRef;recalc();}
 function recalc(){const t=+document.getElementById('totAmt').value||0,p=+document.getElementById('paidAmt').value||0;document.getElementById('mTot').textContent=tk(t);document.getElementById('mPaid').textContent=tk(Math.min(p,t));document.getElementById('mDue').textContent=tk(Math.max(0,t-p));document.getElementById('methodField').style.display=p>0?'block':'none';}
-function addPhoto(e,strip){
-  const files=Array.from(e.target.files||[]); if(!files.length)return;
-  files.forEach(f=>{
-    const r=new FileReader();r.onload=()=>{const img=document.createElement('img');img.src=r.result;img.className='pthumb';const el=document.getElementById(strip);if(el)el.appendChild(img);};r.readAsDataURL(f);
-    if(strip==='np-strip'){ npPhotos.push(f); }
-    else if(strip==='ov-strip' && currentViewOrder && sb){
-      (async()=>{try{const path=currentViewOrder.dbid+'/'+Date.now()+'_'+Math.random().toString(36).slice(2,6)+'_'+f.name.replace(/[^a-zA-Z0-9._-]/g,'_');const {error}=await sb.storage.from('order-photos').upload(path,f);if(error){console.error('photo upload:',error);toast('Photo upload failed (see console)');return;}await sb.from('order_photos').insert({order_id:currentViewOrder.dbid,url:path,created_by:currentUser?currentUser.id:null});}catch(err){console.error('photo:',err);toast('Photo upload failed');}})();
+async function toJpeg(file, maxDim=1600, quality=0.85){
+  // Re-encode any browser-decodable image to a compact JPEG.
+  // Returns a JPEG File, or null if the browser can't decode it (e.g. RAW/DNG/HEIC-unsupported).
+  try{
+    let bmp;
+    try{ bmp = await createImageBitmap(file); }
+    catch(_){
+      bmp = await new Promise((res,rej)=>{ const u=URL.createObjectURL(file); const im=new Image(); im.onload=()=>{res(im);}; im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('decode'));}; im.src=u; });
     }
-  });
-  toast(files.length>1?(files.length+' photos added'):'Photo added');
-  e.target.value='';
+    const w=bmp.width||bmp.naturalWidth, h=bmp.height||bmp.naturalHeight;
+    if(!w||!h) return null;
+    let nw=w, nh=h;
+    if(Math.max(w,h)>maxDim){ const r=maxDim/Math.max(w,h); nw=Math.round(w*r); nh=Math.round(h*r); }
+    const cv=document.createElement('canvas'); cv.width=nw; cv.height=nh;
+    cv.getContext('2d').drawImage(bmp,0,0,nw,nh);
+    if(bmp.close) bmp.close();
+    const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',quality));
+    if(!blob) return null;
+    const base=(file.name||'photo').replace(/\.[^.]+$/,'')||'photo';
+    return new File([blob], base+'.jpg', {type:'image/jpeg'});
+  }catch(e){ console.warn('toJpeg failed (likely RAW/DNG):',e); return null; }
+}
+async function addPhoto(e,strip){
+  const files=Array.from(e.target.files||[]); e.target.value=''; if(!files.length)return;
+  let added=0, skipped=0;
+  for(const f of files){
+    const jf=await toJpeg(f);
+    if(!jf){ skipped++; continue; }
+    const url=URL.createObjectURL(jf);
+    const img=document.createElement('img'); img.src=url; img.className='pthumb';
+    const el=document.getElementById(strip); if(el) el.appendChild(img);
+    if(strip==='np-strip'){ npPhotos.push(jf); }
+    else if(strip==='ov-strip' && currentViewOrder && sb){
+      try{
+        const path=currentViewOrder.dbid+'/'+Date.now()+'_'+Math.random().toString(36).slice(2,6)+'_'+jf.name;
+        const {error}=await sb.storage.from('order-photos').upload(path,jf,{contentType:'image/jpeg'});
+        if(error){ console.error('photo upload:',error); toast('Photo upload failed (see console)'); continue; }
+        await sb.from('order_photos').insert({order_id:currentViewOrder.dbid,url:path,created_by:currentUser?currentUser.id:null});
+      }catch(err){ console.error('photo:',err); toast('Photo upload failed'); }
+    }
+    added++;
+  }
+  if(added) toast(added>1?(added+' photos added'):'Photo added');
+  if(skipped) toast(skipped+' photo(s) skipped — RAW/DNG can’t be shown; switch your camera off "RAW" and retake');
 }
 let lastSaved=null;
 async function saveOrder(){
@@ -1682,7 +1715,7 @@ async function saveOrder(){
     }
     // Photos upload separately (files can't pass through the RPC) — non-blocking.
     let photoFail=0;
-    for(const f of npPhotos){ try{ const path=order.id+'/'+Date.now()+'_'+f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const {error:uerr}=await sb.storage.from('order-photos').upload(path,f); if(uerr){console.error('photo upload failed:',uerr);photoFail++;continue;} const {error:prerr}=await sb.from('order_photos').insert({order_id:order.id,url:path,created_by:currentUser?currentUser.id:null}); if(prerr){console.error('order_photos insert failed:',prerr);photoFail++;} }catch(pe){console.error('photo error:',pe);photoFail++;} }
+    for(const f of npPhotos){ try{ const path=order.id+'/'+Date.now()+'_'+f.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const {error:uerr}=await sb.storage.from('order-photos').upload(path,f,{contentType:'image/jpeg'}); if(uerr){console.error('photo upload failed:',uerr);photoFail++;continue;} const {error:prerr}=await sb.from('order_photos').insert({order_id:order.id,url:path,created_by:currentUser?currentUser.id:null}); if(prerr){console.error('order_photos insert failed:',prerr);photoFail++;} }catch(pe){console.error('photo error:',pe);photoFail++;} }
     // success — use the order_number + customer name returned by the RPC
     const custName=order.name||newName||phone;
     const custAddr=(currentCustomer&&currentCustomer.address)||newAddr||'Uttara, Dhaka';
