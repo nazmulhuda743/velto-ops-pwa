@@ -2102,12 +2102,45 @@ async function loadOrderPhotos(dbid){
   }catch(e){console.error('photos load:',e);return [];}
 }
 async function rePhoto(img){
-  // A thumbnail failed to load (usually an expired signed URL) — re-sign once from the stored path.
   if(!img||img.dataset.retried||!sb) { if(img) img.classList.add('pthumb-broken'); return; }
   const path=img.getAttribute('data-path'); if(!path){ img.classList.add('pthumb-broken'); return; }
   img.dataset.retried='1';
   try{ const {data}=await sb.storage.from('order-photos').createSignedUrl(path,604800); if(data&&data.signedUrl){ img.src=data.signedUrl; } else { img.classList.add('pthumb-broken'); } }
   catch(e){ img.classList.add('pthumb-broken'); }
+}
+async function diagnosePhotos(){
+  const box=document.getElementById('photoDiag'); if(!box)return;
+  if(!sb||!currentViewOrder){ box.innerHTML='Not connected.'; return; }
+  box.innerHTML='Checking…';
+  const L=[]; const dbid=currentViewOrder.dbid;
+  try{
+    const {data:rows,error}=await sb.from('order_photos').select('url').eq('order_id',dbid).order('created_at',{ascending:true});
+    if(error){ box.innerHTML='❌ Cannot read order_photos: '+error.message; return; }
+    L.push('Photo records in DB: '+(rows?rows.length:0));
+    if(!rows||!rows.length){ box.innerHTML=L.join('<br>')+'<br>(no records — nothing was saved for this order)'; return; }
+    const paths=rows.map(r=>r.url).filter(Boolean);
+    const httpPaths=paths.filter(p=>/^https?:\/\//i.test(p)).length;
+    if(httpPaths) L.push(httpPaths+' are old full URLs (can’t be re-signed)');
+    L.push('First path: '+(paths[0]||'—'));
+    const toSign=paths.filter(p=>!/^https?:\/\//i.test(p));
+    if(toSign.length){
+      const {data:signed,error:serr}=await sb.storage.from('order-photos').createSignedUrls(toSign,604800);
+      if(serr){ box.innerHTML=L.join('<br>')+'<br>❌ Could not sign URLs (storage access blocked): '+serr.message; return; }
+      const okN=(signed||[]).filter(s=>s&&s.signedUrl).length;
+      L.push('Signed URLs made: '+okN+'/'+toSign.length);
+      const first=(signed||[]).find(s=>s&&s.signedUrl);
+      if(first){
+        box.innerHTML=L.join('<br>')+'<br>Fetching the first photo…';
+        try{
+          const res=await fetch(first.signedUrl);
+          L.push('Fetch first photo → HTTP '+res.status);
+          if(res.ok){ const b=await res.blob(); L.push('✅ File is there: '+Math.round(b.size/1024)+' KB, '+(b.type||'unknown type')+'. If it still won’t show, it’s a render issue — tell Claude.'); }
+          else { const t=await res.text(); L.push('❌ File not retrievable. '+t.slice(0,160)); L.push('→ The record exists but the image file is missing from storage (it didn’t finish uploading).'); }
+        }catch(fe){ L.push('❌ Fetch failed: '+(fe.message||fe)); }
+      }
+    }
+    box.innerHTML=L.join('<br>');
+  }catch(e){ box.innerHTML='❌ '+(e.message||e); }
 }
 function openPhoto(url){const lb=document.getElementById('photoLightbox');document.getElementById('lbImg').src=url;lb.classList.add('show');try{history.pushState({v:'photo'},'');}catch(e){}}
 function closePhoto(){document.getElementById('photoLightbox').classList.remove('show');document.getElementById('lbImg').src='';}
@@ -2159,7 +2192,7 @@ function orderViewHTML(o){
     <div class="field"><select id="ovMethodSel" onchange="ovSetMethod(this.value)"><option ${!o.method||o.method==='—'?'selected':''} value="—">— Not set —</option>${methods.map(m=>`<option ${m===o.method?'selected':''}>${m}</option>`).join('')}</select></div>
     ${due>0?`<button class="btn ghost" style="margin-top:13px" onclick="openPaySheet()">＋ Add Payment (${tk(due)} due)</button>`:''}
   </div>
-  <div class="card"><span class="label">Order Photos${(o.photos&&o.photos.length)?` · ${o.photos.length}`:''}</span><div class="photos" style="margin-top:11px"><div class="photo-btns"><label class="addphoto"><input type="file" accept="image/*" capture="environment" hidden onchange="addPhoto(event,'ov-strip')"><svg viewBox="0 0 24 24"><path d="M23 19V8a2 2 0 00-2-2h-3l-2-3H10L8 6H5a2 2 0 00-2 2v11a2 2 0 002 2h16a2 2 0 002-2zM12 17a4 4 0 100-8 4 4 0 000 8z"/></svg> Take Photo</label><label class="addphoto"><input type="file" accept="image/*" multiple hidden onchange="addPhoto(event,'ov-strip')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg> Add Photo</label></div><div class="pstrip" id="ov-strip">${(o.photos||[]).map(p=>`<img src="${p.url}" data-path="${he(p.path||'')}" class="pthumb" onerror="rePhoto(this)" onclick="openPhoto(this.src)" style="cursor:pointer" title="View photo">`).join('')}</div></div></div>
+  <div class="card"><span class="label">Order Photos${(o.photos&&o.photos.length)?` · ${o.photos.length}`:''}</span><div class="photos" style="margin-top:11px"><div class="photo-btns"><label class="addphoto"><input type="file" accept="image/*" capture="environment" hidden onchange="addPhoto(event,'ov-strip')"><svg viewBox="0 0 24 24"><path d="M23 19V8a2 2 0 00-2-2h-3l-2-3H10L8 6H5a2 2 0 00-2 2v11a2 2 0 002 2h16a2 2 0 002-2zM12 17a4 4 0 100-8 4 4 0 000 8z"/></svg> Take Photo</label><label class="addphoto"><input type="file" accept="image/*" multiple hidden onchange="addPhoto(event,'ov-strip')"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg> Add Photo</label></div><div class="pstrip" id="ov-strip">${(o.photos||[]).map(p=>`<img src="${p.url}" data-path="${he(p.path||'')}" class="pthumb" onerror="rePhoto(this)" onclick="openPhoto(this.src)" style="cursor:pointer" title="View photo">`).join('')}</div><button class="btn-link" style="font-size:11px;margin-top:8px" onclick="diagnosePhotos()">Why aren't photos showing? →</button><div id="photoDiag" style="font-size:11px;color:var(--tx-3);margin-top:6px;line-height:1.6;word-break:break-all"></div></div></div>
   ${o.status==='Delivered'?`<button class="btn primary" onclick="invoiceForOrder()" style="margin-bottom:11px">🧾 Generate Invoice</button>`:`<button class="btn ghost" onclick="invoiceForOrder()" style="margin-bottom:11px">🧾 View / Send Invoice</button>`}
   <button class="btn ghost" onclick="navTo('s-orders')">‹ Back to Orders</button>
   `;
