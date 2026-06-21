@@ -1,6 +1,6 @@
 // Velto Ops service worker — minimal, safe.
 // Bump CACHE when shipping a new version to force fresh assets.
-const CACHE = 'velto-ops-v5';
+const CACHE = 'velto-ops-v6';
 const SHELL = [
   './',
   './index.html',
@@ -10,6 +10,7 @@ const SHELL = [
   './icon-maskable-192.png',
   './icon-maskable-512.png',
   './apple-touch-icon.png',
+  './badge-96.png',
   './favicon.png'
 ];
 
@@ -79,17 +80,20 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', event => {
   let d = {};
   try { d = event.data ? event.data.json() : {}; }
-  catch (e) { d = { title: 'Velto Ops', body: event.data ? event.data.text() : '' }; }
-  const title = d.title || 'Velto Ops';
+  catch (e) { d = { title: 'Velto', body: event.data ? event.data.text() : '' }; }
+  const title = d.title || 'Velto';
   const options = {
     body: d.body || '',
     icon: './icon-192.png',
-    badge: './icon-192.png',
-    tag: d.tag || 'velto-order',
+    badge: './badge-96.png',        // monochrome glyph for the status bar
+    tag: d.tag || 'velto-order',    // same tag replaces, no stacking duplicates
     renotify: true,
-    requireInteraction: true,
-    vibrate: [90, 50, 90, 50, 90],
-    data: { url: d.url || './' }
+    requireInteraction: false,      // auto-dismiss like a modern app, not a sticky card
+    silent: false,
+    vibrate: [50, 30, 50],          // a short, soft tap — not an alarm
+    timestamp: Date.now(),
+    data: { url: d.url || './' },
+    actions: [{ action: 'open', title: 'View order' }]
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });
