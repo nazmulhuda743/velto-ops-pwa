@@ -1120,13 +1120,30 @@ async function doLogin(){
   await afterAuth(data.user); setBusy(false);
 }
 async function afterAuth(user){
-  let profile=null;
-  try{ const { data } = await sb.from('profiles').select('name,role,active').eq('id', user.id).maybeSingle(); profile=data; }catch(e){}
-  if(!profile || profile.active !== true){           // missing OR inactive -> blocked
+  let profile=null, netFailed=false;
+  try{ const { data, error } = await sb.from('profiles').select('name,role,active').eq('id', user.id).maybeSingle(); if(error){netFailed=true;} else {profile=data;} }
+  catch(e){ netFailed=true; }
+  const offline = netFailed || (typeof navigator!=='undefined' && navigator.onLine===false);
+  if(!profile){
+    // Offline / couldn't reach Supabase: fall back to the last known-good profile so the
+    // app still opens with cached data. Do NOT sign out (that would wipe the session).
+    const cached = lsGet('velto_profile_'+user.id);
+    if(offline && cached && cached.active===true){
+      currentUser=user; currentRole=cached.role; currentName=(cached.name||'').trim()||null;
+      setOnline(false); applyRole(cached); unlockApp(cached);
+      return;
+    }
+    // Online and genuinely no profile -> blocked.
     try{ await sb.auth.signOut(); }catch(e){}
     showLogin(); showErr('Access disabled. Please contact Velto admin.');
     return;
   }
+  if(profile.active !== true){
+    try{ await sb.auth.signOut(); }catch(e){}
+    showLogin(); showErr('Access disabled. Please contact Velto admin.');
+    return;
+  }
+  lsSet('velto_profile_'+user.id, {name:profile.name, role:profile.role, active:profile.active});
   currentUser=user; currentRole=profile.role; currentName=(profile.name||'').trim()||null;
   applyRole(profile); unlockApp(profile);
 }
