@@ -456,7 +456,7 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
 .kv .v{font-size:14px;font-weight:500;margin-top:4px}
 .photo-lightbox{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;padding:20px}
 .photo-lightbox.show{display:flex}
-.photo-lightbox img{max-width:100%;max-height:88%;border-radius:12px;object-fit:contain}
+.photo-lightbox img{max-width:100%;max-height:88%;border-radius:12px;object-fit:contain;touch-action:none;transform-origin:center center;will-change:transform}
 .lb-close{position:absolute;top:16px;right:16px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;font-size:17px;cursor:pointer}
 .ocard:active{border-color:var(--accent)}
 .ocard .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
@@ -1056,7 +1056,7 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
       </div>
     </div>
   </div>
-  <div class="photo-lightbox" id="photoLightbox" onclick="closePhoto()"><img id="lbImg" src="" alt="order photo"><button class="lb-close" onclick="closePhoto()">✕</button></div>
+  <div class="photo-lightbox" id="photoLightbox" onclick="closePhoto()"><img id="lbImg" src="" alt="order photo" onclick="event.stopPropagation()"><button class="lb-close" onclick="closePhoto()">✕</button><div style="position:absolute;bottom:16px;left:0;right:0;text-align:center;color:rgba(255,255,255,.5);font-size:11px;pointer-events:none">Pinch or double-tap to zoom</div></div>
 
   <!-- LOGIN GATE (covers the whole app until authenticated) -->
   <div id="splash" style="position:fixed;inset:0;z-index:400;display:flex;align-items:center;justify-content:center;background:#070A18">
@@ -2148,8 +2148,37 @@ async function diagnosePhotos(){
     box.innerHTML=L.join('<br>');
   }catch(e){ box.innerHTML='❌ '+(e.message||e); }
 }
-function openPhoto(url){const lb=document.getElementById('photoLightbox');document.getElementById('lbImg').src=url;lb.classList.add('show');try{history.pushState({v:'photo'},'');}catch(e){}}
-function closePhoto(){document.getElementById('photoLightbox').classList.remove('show');document.getElementById('lbImg').src='';}
+let lbScale=1, lbX=0, lbY=0;
+function lbApply(){const img=document.getElementById('lbImg');if(img){img.style.transform=`translate(${lbX}px,${lbY}px) scale(${lbScale})`;img.style.cursor=lbScale>1?'grab':'zoom-in';}}
+function lbReset(){lbScale=1;lbX=0;lbY=0;lbApply();}
+function openPhoto(url){const lb=document.getElementById('photoLightbox');const img=document.getElementById('lbImg');img.src=url;lbReset();wireLbZoom();lb.classList.add('show');try{history.pushState({v:'photo'},'');}catch(e){}}
+function closePhoto(){document.getElementById('photoLightbox').classList.remove('show');document.getElementById('lbImg').src='';lbReset();}
+let _lbWired=false;
+function wireLbZoom(){
+  if(_lbWired)return; const img=document.getElementById('lbImg'); if(!img)return; _lbWired=true;
+  const dist=t=>Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+  let pinchStart=0, startScale=1, panStart=null, lastTap=0;
+  img.addEventListener('touchstart',e=>{
+    if(e.touches.length===2){ pinchStart=dist(e.touches); startScale=lbScale; }
+    else if(e.touches.length===1){
+      const now=Date.now();
+      if(now-lastTap<300){ e.preventDefault(); if(lbScale>1){lbReset();}else{lbScale=2.6;lbApply();} }
+      else if(lbScale>1){ panStart={x:e.touches[0].clientX-lbX, y:e.touches[0].clientY-lbY}; }
+      lastTap=now;
+    }
+  },{passive:false});
+  img.addEventListener('touchmove',e=>{
+    if(e.touches.length===2){ e.preventDefault(); const d=dist(e.touches); lbScale=Math.min(5,Math.max(1,startScale*d/(pinchStart||1))); if(lbScale<=1){lbX=0;lbY=0;} lbApply(); }
+    else if(e.touches.length===1 && lbScale>1 && panStart){ e.preventDefault(); lbX=e.touches[0].clientX-panStart.x; lbY=e.touches[0].clientY-panStart.y; lbApply(); }
+  },{passive:false});
+  img.addEventListener('touchend',()=>{ panStart=null; });
+  // Desktop: wheel to zoom, drag to pan
+  img.addEventListener('wheel',e=>{ e.preventDefault(); lbScale=Math.min(5,Math.max(1, lbScale - e.deltaY*0.0022)); if(lbScale<=1){lbX=0;lbY=0;} lbApply(); },{passive:false});
+  let md=null;
+  img.addEventListener('mousedown',e=>{ if(lbScale>1){ e.preventDefault(); md={x:e.clientX-lbX,y:e.clientY-lbY}; img.style.cursor='grabbing'; } });
+  window.addEventListener('mousemove',e=>{ if(md){ lbX=e.clientX-md.x; lbY=e.clientY-md.y; lbApply(); } });
+  window.addEventListener('mouseup',()=>{ md=null; lbApply(); });
+}
 function orderViewHTML(o){
   const {due,st}=payInfo(o);
   let items='';
@@ -2207,13 +2236,16 @@ function tgl(btn,msg){[...btn.parentNode.children].forEach(b=>b.classList.remove
 async function openDetail(num){try{history.pushState({v:'detail'},'');}catch(e){}
   pendingStatus=null;
   const base=ordersData.find(o=>o.id===num);if(!base){toast('Order not found');return;}
-  let items=[];try{const {data,error}=await sb.from('order_items').select('service_category,item_name,quantity,quoted_price,reference_price').eq('order_id',base.dbid);if(error)console.error('items load:',error);items=data||[];}catch(e){console.error('items load:',e);}
-  const o={...base,lines:items.map(it=>({svc:it.service_category,name:it.item_name,qty:it.quantity,price:Number(it.quoted_price!=null?it.quoted_price:(it.reference_price!=null?it.reference_price:0))}))};
-  o.photos=await loadOrderPhotos(base.dbid);
-  await ensureAddr(o);
+  // Draw the order instantly from cached data, then fill items/photos/address in the background.
+  const o={...base, lines: base.lines||[], photos: base.photos||[]};
   currentViewOrder=o;
   document.getElementById('detBody').innerHTML=orderViewHTML(o);
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('s-detail').classList.add('active');document.getElementById('topctx').textContent='Order';document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on',b.dataset.s==='s-orders'));document.querySelector('.scroll').scrollTop=0;
+  if(!sb || (typeof navigator!=='undefined' && navigator.onLine===false)) return;
+  try{const {data,error}=await sb.from('order_items').select('service_category,item_name,quantity,quoted_price,reference_price').eq('order_id',base.dbid);if(!error&&data){o.lines=data.map(it=>({svc:it.service_category,name:it.item_name,qty:it.quantity,price:Number(it.quoted_price!=null?it.quoted_price:(it.reference_price!=null?it.reference_price:0))}));}}catch(e){console.error('items load:',e);}
+  try{o.photos=await loadOrderPhotos(base.dbid);}catch(e){}
+  try{await ensureAddr(o);}catch(e){}
+  if(currentViewOrder===o){ document.getElementById('detBody').innerHTML=orderViewHTML(o); }
 }
 
 function searchMode(t){searchType=t;document.getElementById('segId').classList.toggle('on',t==='id');document.getElementById('segPh').classList.toggle('on',t==='phone');const nm=document.getElementById('segNm');if(nm)nm.classList.toggle('on',t==='name');const inp=document.getElementById('searchIn');inp.placeholder=t==='id'?'VEL-01104':(t==='phone'?'01XXXXXXXXX':'Customer name, e.g. Asif');inp.classList.toggle('mono',t!=='name');inp.value='';document.getElementById('searchResult').innerHTML='';document.getElementById('searchBox').style.display='block';}
@@ -2243,12 +2275,15 @@ function searchCardHTML(o){
 async function openSearchOrder(dbid){
   pendingStatus=null;
   const o=searchResults.find(x=>x.dbid===dbid);if(!o)return;
-  let items=[];try{const {data}=await sb.from('order_items').select('service_category,item_name,quantity,quoted_price,reference_price').eq('order_id',dbid);items=data||[];}catch(e){console.error('items:',e);}
-  o.lines=(items||[]).map(it=>({svc:it.service_category,name:it.item_name,qty:it.quantity,price:Number(it.quoted_price!=null?it.quoted_price:(it.reference_price!=null?it.reference_price:0))}));
-  o.photos=await loadOrderPhotos(dbid);await ensureAddr(o);currentViewOrder=o;
+  o.lines=o.lines||[]; o.photos=o.photos||[]; currentViewOrder=o;
   document.getElementById('searchBox').style.display='none';
   document.getElementById('searchResult').innerHTML=`<button class="backbtn" onclick="doSearch()">‹ Back to results</button>`+orderViewHTML(o);
   document.querySelector('.scroll').scrollTop=0;
+  if(!sb || (typeof navigator!=='undefined' && navigator.onLine===false)) return;
+  try{const {data}=await sb.from('order_items').select('service_category,item_name,quantity,quoted_price,reference_price').eq('order_id',dbid);o.lines=(data||[]).map(it=>({svc:it.service_category,name:it.item_name,qty:it.quantity,price:Number(it.quoted_price!=null?it.quoted_price:(it.reference_price!=null?it.reference_price:0))}));}catch(e){console.error('items:',e);}
+  try{o.photos=await loadOrderPhotos(dbid);}catch(e){}
+  try{await ensureAddr(o);}catch(e){}
+  if(currentViewOrder===o){ document.getElementById('searchResult').innerHTML=`<button class="backbtn" onclick="doSearch()">‹ Back to results</button>`+orderViewHTML(o); }
 }
 function clearSearch(){document.getElementById('searchResult').innerHTML='';document.getElementById('searchBox').style.display='block';document.getElementById('searchIn').value='';document.getElementById('searchIn').focus();}
 
