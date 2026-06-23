@@ -238,17 +238,53 @@ body{background:radial-gradient(1100px 600px at 80% -10%,rgba(0,214,180,.10),tra
 .reorder-home .rh-stats b{font-size:15px;font-weight:800;margin-right:3px}
 .rh-dot{display:none;width:7px;height:7px;border-radius:50%;background:#ffd13b;margin-left:5px;vertical-align:middle;box-shadow:0 0 8px #ffd13b}
 #s-reorder{padding-bottom:90px}
-.ro-intro{font-size:12.5px;line-height:1.6;color:var(--tx-2);background:var(--card);border:1px solid var(--bd-2);border-radius:12px;padding:13px 14px;margin-bottom:14px}
+.ro-dash{background:linear-gradient(135deg,#15233f 0%,#1b1430 100%);border:1px solid var(--bd-2);border-radius:16px;padding:15px;margin-bottom:13px}
+.ro-dash-h{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--tx-3);margin-bottom:11px}
+.ro-tiles{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.ro-tile{background:rgba(255,255,255,.04);border:1px solid var(--bd-2);border-radius:11px;padding:11px 12px}
+.ro-tile-v{font-size:20px;font-weight:800;color:var(--tx)}
+.ro-tile-l{font-size:10.5px;color:var(--tx-3);margin-top:2px;letter-spacing:.2px}
+.ro-tile.ok .ro-tile-v{color:#34d399}
+.ro-tile.warn .ro-tile-v{color:#ffd13b}
+.ro-tile.rev .ro-tile-v{color:#7ab8ff}
+.ro-conv{margin-top:12px}
+.ro-conv-top{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--tx-2)}
+.ro-conv-now{font-size:18px;font-weight:800;color:var(--tx)}
+.ro-bar{height:7px;border-radius:6px;background:rgba(255,255,255,.1);margin:7px 0 5px;overflow:hidden}
+.ro-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#1f6feb,#7a3df0)}
+.ro-conv-sub{font-size:10.5px;color:var(--tx-3)}
+.ro-pipe{display:flex;align-items:center;gap:4px;overflow-x:auto;padding:4px 0 12px;margin-bottom:6px;-webkit-overflow-scrolling:touch}
+.ro-pstage{flex-shrink:0;text-align:center;min-width:62px;background:var(--card);border:1px solid var(--bd-2);border-radius:10px;padding:8px 6px}
+.ro-pcount{font-size:16px;font-weight:800;color:var(--tx)}
+.ro-plabel{font-size:9.5px;color:var(--tx-3);margin-top:1px}
+.ro-parrow{flex-shrink:0;color:var(--tx-3);font-size:15px}
 .ro-sec{margin-bottom:18px}
 .ro-sec-h{font-size:13px;font-weight:800;color:var(--tx);display:flex;align-items:center;gap:8px;margin-bottom:2px}
 .ro-count{font-size:11px;font-weight:700;color:var(--accent-bright);background:rgba(31,111,235,.14);border-radius:20px;padding:1px 9px}
-.ro-sec-sub{font-size:11.5px;color:var(--tx-3);line-height:1.5;margin-bottom:9px}
+.sec-red .ro-sec-h{color:#ff6b6b}
+.sec-red .ro-count{color:#ff6b6b;background:rgba(255,107,107,.14)}
+.ro-sec-sub{font-size:11.5px;color:var(--tx-3);line-height:1.5;margin-bottom:10px}
 .ro-empty{font-size:12px;color:var(--tx-3);padding:6px 2px 2px}
-.ro-row{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--bd-2);border-radius:12px;padding:11px 13px;margin-bottom:8px}
-.ro-main{flex:1;min-width:0;cursor:pointer}
-.ro-name{font-size:14px;font-weight:700;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ro-sub{font-size:11.5px;color:var(--tx-3);margin-top:2px}
-.ro-wa{flex-shrink:0;background:#25d366;color:#053d1e;border:none;border-radius:9px;padding:9px 14px;font-size:12.5px;font-weight:800;cursor:pointer}
+.ro-card{background:var(--card);border:1px solid var(--bd-2);border-radius:13px;padding:12px 13px;margin-bottom:9px}
+.ro-card.is-overdue{border-color:rgba(255,107,107,.4)}
+.ro-card.is-done{opacity:.6}
+.ro-card-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ro-card .ro-name{font-size:14.5px;font-weight:700;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ro-val{flex-shrink:0;font-size:13.5px;font-weight:800;color:var(--tx-2)}
+.ro-meta{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--tx-3);margin-top:4px;flex-wrap:wrap}
+.ro-meta2{font-size:11px;color:var(--tx-3);margin-top:2px}
+.ro-stars{color:#ffc83d;font-size:12px;letter-spacing:1px}
+.ro-stars-off{color:rgba(255,255,255,.18)}
+.ro-act{display:flex;gap:7px;margin-top:11px}
+.ro-b{flex:1;border:none;border-radius:9px;padding:9px 6px;font-size:12.5px;font-weight:800;cursor:pointer}
+.ro-b-wa{background:#25d366;color:#053d1e}
+.ro-b-call{background:rgba(122,184,255,.16);color:#7ab8ff;border:1px solid rgba(122,184,255,.3)}
+.ro-b-ghost{background:rgba(255,255,255,.06);color:var(--tx-2);border:1px solid var(--bd-2)}
+.ro-out{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.ro-chip{background:transparent;border:1px solid var(--bd-2);color:var(--tx-3);border-radius:20px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer}
+.ro-chip:active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.ro-done{margin-top:10px;font-size:12px;font-weight:700;color:#34d399;display:flex;align-items:center;gap:8px}
+.ro-undo{background:none;border:none;color:var(--tx-3);font-size:11px;text-decoration:underline;cursor:pointer}
 .is-offline .live{color:var(--amber,#f5a623)}
 .is-offline .live i{background:var(--amber,#f5a623);box-shadow:none;animation:none}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
@@ -1211,7 +1247,7 @@ function normPhone(v){let d=(v||'').replace(/\D/g,'');if(d.startsWith('880'))d='
 function relDate(d){if(!d)return '';const dt=new Date(d),t=new Date();const days=Math.floor((new Date(t.toDateString())-new Date(dt.toDateString()))/86400000);if(days===0)return 'Today';if(days===1)return 'Yesterday';if(days<0||days>=7)return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});return days+' days ago';}
 function fullDate(d){if(!d)return '';const dt=new Date(d);if(isNaN(dt))return '';return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});}
 function dhakaDateStr(d){const dt=d?new Date(d):new Date();if(isNaN(dt))return '';return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dhaka',year:'numeric',month:'2-digit',day:'2-digit'}).format(dt);}
-function buildOrderObj(r,items){return {dbid:r.id,id:r.order_number,name:r.name_snapshot||'(no name)',phone:r.phone_snapshot||'',zone:r.zone_snapshot||'Uttara',addr:r.address_snapshot||'',status:r.order_status,sc:statusClass(r.order_status),total:Number(r.total_amount)||0,paid:Number(r.amount_paid)||0,method:r.payment_method||'—',rider:r.rider_assigned||'—',items:Number(r.total_items)||0,date:relDate(r.order_date||r.created_at),fdate:fullDate(r.order_date||r.created_at),rawDate:r.order_date||r.created_at,deliveryDate:r.delivery_date||null,pickupDate:r.pickup_date||null,lines:(items||[]).map(it=>({svc:it.service_category,name:it.item_name,qty:it.quantity,price:Number(it.quoted_price!=null?it.quoted_price:(it.reference_price!=null?it.reference_price:0))}))};}
+function buildOrderObj(r,items){return {dbid:r.id,id:r.order_number,name:r.name_snapshot||'(no name)',phone:r.phone_snapshot||'',zone:r.zone_snapshot||'Uttara',addr:r.address_snapshot||'',status:r.order_status,sc:statusClass(r.order_status),total:Number(r.total_amount)||0,paid:Number(r.amount_paid)||0,method:r.payment_method||'—',rider:r.rider_assigned||'—',items:Number(r.total_items)||0,date:relDate(r.order_date||r.created_at),fdate:fullDate(r.order_date||r.created_at),rawDate:r.order_date||r.created_at,deliveryDate:r.delivery_date||null,pickupDate:r.pickup_date||null,services:(Array.isArray(r.service_category)?r.service_category:[]),lines:(items||[]).map(it=>({svc:it.service_category,name:it.item_name,qty:it.quantity,price:Number(it.quoted_price!=null?it.quoted_price:(it.reference_price!=null?it.reference_price:0))}))};}
 let ordPage=1; const ORD_PAGE=20; let ordQuery='';
 async function ensureAddr(o){
   if(!o||o.addr||!o.phone||!sb)return;
@@ -1228,7 +1264,7 @@ window.addEventListener('online', ()=>{ setOnline(true); try{loadOrders();}catch
 window.addEventListener('offline', ()=>{ setOnline(false); });
 function renderOrdersNow(){ ordPage=1; const a=document.querySelector('.fchip.on'); renderOrders(listFor(a?a.dataset.f:'all')); renderHome(); }
 async function loadOrders(){
-  const cols='id,order_number,name_snapshot,phone_snapshot,zone_snapshot,address_snapshot,order_status,total_amount,amount_paid,payment_method,rider_assigned,total_items,order_date,created_at,delivery_date,pickup_date';
+  const cols='id,order_number,name_snapshot,phone_snapshot,zone_snapshot,address_snapshot,order_status,total_amount,amount_paid,payment_method,rider_assigned,total_items,order_date,created_at,delivery_date,pickup_date,service_category';
   // Instant render from the cached copy so orders show even with no internet.
   if(!ordersData.length){ const c=lsGet('velto_orders'); if(c&&c.length){ ordersData=c.map(r=>buildOrderObj(r,null)); renderOrdersNow(); } }
   if(!sb) return;
@@ -2344,78 +2380,147 @@ function listFor(f){let list=(f==='unpaid')?ordersData.filter(o=>o.total-o.paid>
 function ordSearchInput(){const el=document.getElementById('ordSearch');ordQuery=el?el.value:'';ordPage=1;const a=document.querySelector('.fchip.on');renderOrders(listFor(a?a.dataset.f:'all'));}
 function filt(el,f){document.querySelectorAll('.fchip').forEach(c=>c.classList.remove('on'));el.classList.add('on');ordPage=1;renderOrders(listFor(f));}
 function applyFilter(f){document.querySelectorAll('.fchip').forEach(c=>c.classList.remove('on'));const key=(f==='unpaid-delivered')?'unpaid':f;const chip=document.querySelector('.fchip[data-f="'+key+'"]');(chip||document.querySelector('.fchip[data-f=all]')).classList.add('on');renderOrders(listFor(f));}
-// ============ REORDER LOOP — turn order #1 into order #2 (the retention engine) ============
-const REORDER_WINDOWS = { thank:[0,2], nudge:[6,12], last:[13,30] };
+// ============ REORDER LOOP — Mission Control: turn order #1 into order #2 ============
+const REORDER_WINDOWS = { thank:[0,2], nudge:[6,12], standing:[13,30], overdue:[31,75] };
 function roFirstName(name){
   let parts=(name||'').trim().replace(/[.,]/g,'').split(/\s+/).filter(Boolean);
   const titles=['mr','mrs','ms','miss','md','mohammad','mohammed','muhammad','mohd','dr','engr','adv','prof'];
   while(parts.length>1 && titles.includes(parts[0].toLowerCase())) parts.shift();
   return parts[0]||'there';
 }
-function reorderMsg(kind, name){
+function reorderMsg(kind, name, vip){
   const n = roFirstName(name);
   if(kind==='thank') return `Hi ${n}, this is Nazmul, founder of Velto. Your first order came back to you today — I hope the quality matched what we promised. Your first experience with us matters to me personally, so if anything wasn't right, just reply here and I'll put it right. Thank you for trusting us with it.`;
-  if(kind==='nudge') return `Hi ${n}, Nazmul from Velto here. It's been about a week since we returned your last order — usually right about when the next load starts piling up. Whenever you're ready, just reply here and we'll arrange a pickup at your door. No forms, no fuss.`;
-  return `Hi ${n}, Nazmul from Velto. A thought — rather than you reaching out each time, I can set a standing weekly pickup on whichever day suits you best, so your laundry simply takes care of itself. Reply with a day that works and I'll set it up.`;
+  if(kind==='nudge') return vip
+    ? `Hi ${n}, Nazmul here, founder of Velto. It's been about a week since we returned your last order — I wanted to personally check in. Whenever the next load builds up, just reply and I'll have it picked up from your door at a time that suits you.`
+    : `Hi ${n}, Nazmul from Velto here. It's been about a week since we returned your last order — usually right when the next load starts piling up. Whenever you're ready, just reply here and we'll arrange a pickup at your door. No forms, no fuss.`;
+  if(kind==='standing') return `Hi ${n}, Nazmul from Velto. A thought — rather than you reaching out each time, I can set a standing weekly pickup on whichever day suits you best, so your laundry simply takes care of itself. Reply with a day that works and I'll set it up.`;
+  return `Hi ${n}, Nazmul from Velto. It's been a little while — I didn't want you to think we'd forgotten you. If there's anything that wasn't quite right last time, tell me directly. Otherwise, whenever you'd like a pickup, just reply and we'll take it from there.`;
 }
-function waOpen(phone, msg){
-  let d=(phone||'').replace(/\D/g,''); if(d.startsWith('0')) d=d.slice(1); if(!d.startsWith('880')) d='880'+d;
-  window.open(`https://wa.me/${d}?text=${encodeURIComponent(msg)}`,'_blank');
-}
-function roMessage(btn){ if(!btn)return; waOpen(btn.getAttribute('data-phone')||'', reorderMsg(btn.getAttribute('data-kind')||'nudge', btn.getAttribute('data-name')||'')); }
+function roIntl(phone){ let d=(phone||'').replace(/\D/g,''); if(d.startsWith('0')) d=d.slice(1); if(!d.startsWith('880')) d='880'+d; return d; }
+function waOpen(phone, msg){ window.open(`https://wa.me/${roIntl(phone)}?text=${encodeURIComponent(msg)}`,'_blank'); }
+function roMessage(btn){ if(!btn)return; waOpen(btn.getAttribute('data-phone')||'', reorderMsg(btn.getAttribute('data-kind')||'nudge', btn.getAttribute('data-name')||'', btn.getAttribute('data-vip')==='1')); }
+function roCall(btn){ if(!btn)return; window.location.href='tel:+'+roIntl(btn.getAttribute('data-phone')||''); }
+// Outcome / completed tracking (per-device for now; shared table is the next step)
+function roDoneAll(){ return lsGet('velto_reorder_done')||{}; }
+function roIsDone(phone,stage){ const d=roDoneAll()[phone]; return !!(d && d.stage===stage); }
+function roDoneInfo(phone,stage){ const d=roDoneAll()[phone]; return (d&&d.stage===stage)?d:null; }
+function roLog(phone,stage,outcome){ const all=roDoneAll(); all[phone]={stage,outcome,day:dhakaDateStr(),ts:Date.now()}; lsSet('velto_reorder_done',all); }
+function roOutcome(btn){ if(!btn)return; roLog(btn.getAttribute('data-phone'),btn.getAttribute('data-stage'),btn.getAttribute('data-outcome')); toast('Logged: '+btn.getAttribute('data-outcome')); renderReorder(); updateReorderHome(); }
+function roUndo(btn){ if(!btn)return; const all=roDoneAll(); delete all[btn.getAttribute('data-phone')]; lsSet('velto_reorder_done',all); renderReorder(); updateReorderHome(); }
+function roCompletedToday(){ const t=dhakaDateStr(); return Object.values(roDoneAll()).filter(x=>x.day===t).length; }
+function roStars(value){ const v=Number(value)||0; if(v>=2500)return 5; if(v>=1500)return 4; if(v>=700)return 3; if(v>=300)return 2; return 1; }
 function computeReorder(){
   const byPhone={};
   for(const o of ordersData){ const ph=(o.phone||'').trim(); if(!ph) continue; (byPhone[ph]=byPhone[ph]||[]).push(o); }
   const today=new Date(dhakaDateStr()+'T00:00:00');
-  const out={thank:[],nudge:[],last:[],inflight:[]};
+  const out={inflight:[],thank:[],nudge:[],standing:[],overdue:[],converted:[]};
+  let anyCount=0, repeatCount=0;
+  const dayDiff=(s)=>{const d=dhakaDateStr(s); return d?Math.floor((today-new Date(d+'T00:00:00'))/86400000):null;};
   for(const ph in byPhone){
-    const list=byPhone[ph];
-    if(list.length!==1) continue;                       // only one-and-done customers
-    const o=list[0];
-    const rec={name:o.name,phone:ph,orderNum:o.id,value:o.total,status:o.status};
-    if(o.status!=='Delivered'){ if(o.status!=='Cancelled') out.inflight.push(rec); continue; }
-    const dStr=dhakaDateStr(o.deliveryDate||o.rawDate); if(!dStr) continue;
-    const days=Math.floor((today-new Date(dStr+'T00:00:00'))/86400000);
-    rec.days=days;
-    if(days>=REORDER_WINDOWS.thank[0]&&days<=REORDER_WINDOWS.thank[1]) out.thank.push(rec);
-    else if(days>=REORDER_WINDOWS.nudge[0]&&days<=REORDER_WINDOWS.nudge[1]) out.nudge.push(rec);
-    else if(days>=REORDER_WINDOWS.last[0]&&days<=REORDER_WINDOWS.last[1]) out.last.push(rec);
+    const list=byPhone[ph].slice().sort((a,b)=>new Date(a.rawDate)-new Date(b.rawDate));
+    const valid=list.filter(o=>o.status!=='Cancelled'); if(!valid.length) continue;
+    anyCount++;
+    const last=valid[valid.length-1];
+    const base={name:last.name,phone:ph,orderNum:last.id,value:last.total,status:last.status,zone:last.zone,items:last.items,services:last.services||[]};
+    if(valid.length>=2){
+      repeatCount++;
+      const d2=dayDiff(valid[1].rawDate);
+      if(d2!=null && d2<=21){ out.converted.push({...base,orders:valid.length,days:d2}); }
+      continue;                                  // repeat customers are won — out of the loop
+    }
+    // one-and-done
+    const o=valid[0];
+    if(o.status!=='Delivered'){ out.inflight.push(base); continue; }
+    const days=dayDiff(o.deliveryDate||o.rawDate); if(days==null) continue;
+    base.days=days;
+    if(days<=REORDER_WINDOWS.thank[1]) out.thank.push(base);
+    else if(days>=REORDER_WINDOWS.nudge[0]&&days<=REORDER_WINDOWS.nudge[1]) out.nudge.push(base);
+    else if(days>=REORDER_WINDOWS.standing[0]&&days<=REORDER_WINDOWS.standing[1]) out.standing.push(base);
+    else if(days>=REORDER_WINDOWS.overdue[0]&&days<=REORDER_WINDOWS.overdue[1]) out.overdue.push(base);
   }
   out.thank.sort((a,b)=>a.days-b.days);
-  out.nudge.sort((a,b)=>Math.abs(a.days-8)-Math.abs(b.days-8));   // closest to day-8 first
-  out.last.sort((a,b)=>a.days-b.days);
+  out.nudge.sort((a,b)=>(roStars(b.value)-roStars(a.value))||Math.abs(a.days-8)-Math.abs(b.days-8));
+  out.standing.sort((a,b)=>a.days-b.days);
+  out.overdue.sort((a,b)=>a.days-b.days);
+  out.converted.sort((a,b)=>a.days-b.days);
+  // metrics
+  const reachable=out.nudge.concat(out.overdue);
+  const revenueWaiting=reachable.reduce((s,x)=>s+(Number(x.value)||0),0);
+  const toReach=out.thank.length+out.nudge.length+out.overdue.length;
+  const completed=roCompletedToday();
+  const convRate=anyCount?Math.round(repeatCount/anyCount*100):0;
+  out._m={toReach,completed,remaining:Math.max(0,toReach-completed),revenueWaiting,convRate,repeatCount,anyCount};
   return out;
 }
 function updateReorderHome(){
   try{
-    const r=computeReorder();
-    const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
-    set('roThank',r.thank.length); set('roNudge',r.nudge.length); set('roLast',r.last.length);
-    const dot=document.getElementById('roDueDot'); if(dot) dot.style.display=r.nudge.length>0?'inline-block':'none';
+    const r=computeReorder(), set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+    set('roThank',r.thank.length); set('roNudge',r.nudge.length); set('roLast',r.overdue.length);
+    const dot=document.getElementById('roDueDot'); if(dot) dot.style.display=(r.nudge.length+r.overdue.length)>0?'inline-block':'none';
   }catch(e){console.warn('reorder home:',e);}
 }
-function reorderRow(rec,kind){
+const RO_OUTCOMES=['Pickup booked','Replied','Busy','No response','Not interested','Wrong number'];
+function roCard(rec,stage){
+  const stars=roStars(rec.value), vip=stars>=4;
+  const starHtml='<span class="ro-stars">'+'★'.repeat(stars)+'<span class="ro-stars-off">'+'★'.repeat(5-stars)+'</span></span>';
   const val=rec.value?('৳'+Number(rec.value).toLocaleString()):'';
-  const dlabel = kind==='inflight'? (rec.status) : (rec.days===0?'delivered today':(rec.days+'d since delivery'));
-  const meta=[rec.orderNum,val,dlabel].filter(Boolean).join(' · ');
-  return `<div class="ro-row">
-    <div class="ro-main" onclick="openDetail('${rec.orderNum}')"><div class="ro-name">${he(rec.name)}</div><div class="ro-sub">${he(meta)}</div></div>
-    ${kind==='inflight'?'':`<button class="ro-wa" data-name="${he(rec.name)}" data-phone="${he(rec.phone)}" data-kind="${kind}" onclick="roMessage(this)">Message</button>`}
+  const dlabel = stage==='inflight'? rec.status : stage==='converted'? ('reordered '+(rec.days===0?'today':rec.days+'d ago')) : (rec.days===0?'delivered today':rec.days+'d since delivery');
+  const line2=[rec.orderNum,(rec.items?rec.items+' items':''),(rec.services&&rec.services.length?rec.services.join(', '):'')].filter(Boolean).join(' · ');
+  const line3=[rec.zone,dlabel].filter(Boolean).join(' · ');
+  const done=roDoneInfo(rec.phone,stage);
+  let actions='';
+  if(stage==='inflight'||stage==='converted'){
+    actions=`<div class="ro-act"><button class="ro-b ro-b-ghost" onclick="openDetail('${rec.orderNum}')">View order</button></div>`;
+  } else if(done){
+    actions=`<div class="ro-done">✓ ${he(done.outcome)} · today <button class="ro-undo" data-phone="${he(rec.phone)}" onclick="roUndo(this)">undo</button></div>`;
+  } else {
+    const d=`data-name="${he(rec.name)}" data-phone="${he(rec.phone)}" data-kind="${stage}" data-vip="${vip?1:0}"`;
+    actions=`<div class="ro-act">
+        <button class="ro-b ro-b-wa" ${d} onclick="roMessage(this)">WhatsApp</button>
+        <button class="ro-b ro-b-call" data-phone="${he(rec.phone)}" onclick="roCall(this)">Call</button>
+        <button class="ro-b ro-b-ghost" onclick="openDetail('${rec.orderNum}')">Order</button>
+      </div>
+      <div class="ro-out">${RO_OUTCOMES.map(o=>`<button class="ro-chip" data-phone="${he(rec.phone)}" data-stage="${stage}" data-outcome="${he(o)}" onclick="roOutcome(this)">${o}</button>`).join('')}</div>`;
+  }
+  return `<div class="ro-card${done?' is-done':''}${stage==='overdue'?' is-overdue':''}">
+    <div class="ro-card-h"><div class="ro-name">${he(rec.name)}</div><div class="ro-val">${val}</div></div>
+    <div class="ro-meta">${starHtml}${line2?'<span>'+he(line2)+'</span>':''}</div>
+    <div class="ro-meta2">${he(line3)}</div>
+    ${actions}
   </div>`;
 }
 function renderReorder(){
   const box=document.getElementById('reorderBody'); if(!box) return;
-  const r=computeReorder();
-  const sec=(title,sub,arr,kind)=>
-    `<div class="ro-sec"><div class="ro-sec-h">${title} <span class="ro-count">${arr.length}</span></div>`+
-    (arr.length?`<div class="ro-sec-sub">${sub}</div>${arr.map(x=>reorderRow(x,kind)).join('')}`:`<div class="ro-empty">Nobody here right now.</div>`)+
+  const r=computeReorder(), m=r._m;
+  const tile=(label,val,cls)=>`<div class="ro-tile ${cls||''}"><div class="ro-tile-v">${val}</div><div class="ro-tile-l">${label}</div></div>`;
+  const dash=`<div class="ro-dash">
+      <div class="ro-dash-h">Today's mission</div>
+      <div class="ro-tiles">
+        ${tile('To reach today',m.toReach)}
+        ${tile('Completed',m.completed,'ok')}
+        ${tile('Remaining',m.remaining, m.remaining>0?'warn':'ok')}
+        ${tile('Revenue waiting','৳'+m.revenueWaiting.toLocaleString(),'rev')}
+      </div>
+      <div class="ro-conv">
+        <div class="ro-conv-top"><span>First → second order</span><span class="ro-conv-now">${m.convRate}%</span></div>
+        <div class="ro-bar"><i style="width:${Math.min(100,Math.round(m.convRate/60*100))}%"></i></div>
+        <div class="ro-conv-sub">${m.repeatCount} repeat of ${m.anyCount} customers · target 60%</div>
+      </div>
+    </div>`;
+  const stages=[['In progress',r.inflight.length],['Thank you',r.thank.length],['Day 7–8',r.nudge.length],['Standing',r.standing.length],['Converted',r.converted.length]];
+  const pipe=`<div class="ro-pipe">${stages.map((s,i)=>`<div class="ro-pstage"><div class="ro-pcount">${s[1]}</div><div class="ro-plabel">${s[0]}</div></div>${i<stages.length-1?'<div class="ro-parrow">›</div>':''}`).join('')}</div>`;
+  const sec=(title,sub,arr,stage,cls)=>
+    `<div class="ro-sec ${cls||''}"><div class="ro-sec-h">${title} <span class="ro-count">${arr.length}</span></div>`+
+    (arr.length?`<div class="ro-sec-sub">${sub}</div>${arr.map(x=>roCard(x,stage)).join('')}`:`<div class="ro-empty">Nobody here right now.</div>`)+
     `</div>`;
-  box.innerHTML =
-    `<div class="ro-intro">Most first-time customers order once and never return — that's the leak. Reach them at the right moment, in your own voice, and you earn order&nbsp;#2. Tap a name to open the order; tap <b>Message</b> to open WhatsApp with a note ready to send (you can edit it first).</div>`+
-    sec('Say thank you','Delivered in the last 2 days. A genuine thank-you now is what makes the next order feel natural.', r.thank, 'thank')+
-    sec('Follow up now · day 7–8','The reorder window — their laundry is piling up again. A light, founder-voiced nudge converts best here.', r.nudge, 'nudge')+
-    sec('Last call · standing pickup offer','Delivered 2–4 weeks ago, still one order. Offer a standing weekly pickup before they drift for good.', r.last, 'last')+
-    (r.inflight.length? sec('New — first order in progress','Their first order isn\'t delivered yet. They move into the loop automatically once it is.', r.inflight, 'inflight'):'');
+  box.innerHTML = dash + pipe +
+    (r.overdue.length? sec('⚠ Overdue — don\'t let these go','Past the best window and not yet reached. Highest risk of being lost for good. Reach them today.', r.overdue, 'overdue','sec-red'):'')+
+    sec('Say thank you','Delivered in the last 2 days. A genuine thank-you now makes the next order feel natural.', r.thank, 'thank')+
+    sec('Follow up now · day 7–8','Their laundry is piling up again — the highest-converting reorder window. A light, founder-voiced nudge works best.', r.nudge, 'nudge')+
+    sec('Standing pickup offer','Delivered 2–4 weeks ago, still one order. Offer a standing weekly pickup before they drift.', r.standing, 'standing')+
+    (r.converted.length? sec('🎉 Converted — repeat customers','They placed a second order. This is the whole game. Keep them delighted.', r.converted, 'converted'):'')+
+    (r.inflight.length? sec('New — first order in progress','First order not delivered yet. They enter the loop automatically once it is.', r.inflight, 'inflight'):'');
 }
 async function renderHome(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
