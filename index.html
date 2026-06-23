@@ -285,6 +285,14 @@ body{background:radial-gradient(1100px 600px at 80% -10%,rgba(0,214,180,.10),tra
 .ro-chip:active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .ro-done{margin-top:10px;font-size:12px;font-weight:700;color:#34d399;display:flex;align-items:center;gap:8px}
 .ro-undo{background:none;border:none;color:var(--tx-3);font-size:11px;text-decoration:underline;cursor:pointer}
+.ro-sp{flex-shrink:0;font-size:9px;font-weight:800;letter-spacing:.4px;padding:2px 8px;border-radius:20px}
+.sp-thank{background:rgba(52,211,153,.16);color:#34d399}
+.sp-nudge{background:rgba(31,111,235,.18);color:#7ab8ff}
+.sp-standing{background:rgba(255,200,61,.14);color:#ffce5a}
+.sp-overdue{background:rgba(255,107,107,.16);color:#ff8a8a}
+.ro-b-review{background:rgba(255,200,61,.16);color:#ffce5a;border:1px solid rgba(255,200,61,.3)}
+.ro-wins{margin-top:6px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.2);border-radius:12px;padding:11px 13px;font-size:12px;color:var(--tx-2);line-height:1.5}
+.ro-wins b{color:#34d399}
 .ro-card{padding:10px 12px}
 .ro-pr{flex-shrink:0;font-size:9.5px;font-weight:800;letter-spacing:.3px;padding:2px 8px;border-radius:20px}
 .ro-pr-HIGH{background:rgba(255,107,107,.16);color:#ff8a8a}
@@ -1072,7 +1080,7 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
     </section>
 
     <section class="screen" id="s-detail">
-      <button class="backbtn" onclick="navTo('s-orders')">‹ Back to Orders</button>
+      <button class="backbtn" id="detBack" onclick="history.back()">‹ Back</button>
       <div id="detBody"></div>
     </section>
 
@@ -2340,7 +2348,9 @@ function orderViewHTML(o){
   `;
 }
 function tgl(btn,msg){[...btn.parentNode.children].forEach(b=>b.classList.remove('on'));btn.classList.add('on');if(msg)toast(msg);}
-async function openDetail(num){try{history.pushState({v:'detail'},'');}catch(e){}
+async function openDetail(num){
+  const _cur=document.querySelector('.screen.active'); window.__detailOrigin=_cur?_cur.id:'s-orders';
+  try{history.pushState({v:'detail'},'');}catch(e){}
   pendingStatus=null;
   const base=ordersData.find(o=>o.id===num);if(!base){toast('Order not found');return;}
   // Draw the order instantly from cached data, then fill items/photos/address in the background.
@@ -2348,6 +2358,7 @@ async function openDetail(num){try{history.pushState({v:'detail'},'');}catch(e){
   currentViewOrder=o;
   document.getElementById('detBody').innerHTML=orderViewHTML(o);
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('s-detail').classList.add('active');document.getElementById('topctx').textContent='Order';document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on',b.dataset.s==='s-orders'));document.querySelector('.scroll').scrollTop=0;
+  const _bb=document.getElementById('detBack'); if(_bb) _bb.textContent = window.__detailOrigin==='s-reorder'?'‹ Back to Reorder loop':(window.__detailOrigin==='s-deliveries'?'‹ Back to Deliveries':'‹ Back to Orders');
   if(!sb || (typeof navigator!=='undefined' && navigator.onLine===false)) return;
   try{const {data,error}=await sb.from('order_items').select('service_category,item_name,quantity,quoted_price,reference_price').eq('order_id',base.dbid);if(!error&&data){o.lines=data.map(it=>({svc:it.service_category,name:it.item_name,qty:it.quantity,price:Number(it.quoted_price!=null?it.quoted_price:(it.reference_price!=null?it.reference_price:0))}));}}catch(e){console.error('items load:',e);}
   try{o.photos=await loadOrderPhotos(base.dbid);}catch(e){}
@@ -2427,7 +2438,7 @@ function roFirstName(name){
 }
 function reorderMsg(kind, name, vip){
   const n = roFirstName(name);
-  if(kind==='thank') return `Hi ${n}, this is Nazmul, founder of Velto. Your first order came back to you today — I hope the quality matched what we promised. Your first experience with us matters to me personally, so if anything wasn't right, just reply here and I'll put it right. Thank you for trusting us with it.`;
+  if(kind==='thank') return `Hi ${n}! Thank you for choosing Velto — it truly means a lot to us. 🙏\n\nHow was your Velto experience? Rate us 1–5 stars:\n1️⃣ – Poor\n2️⃣ – Below Expectation\n3️⃣ – Good\n4️⃣ – Very Good\n5️⃣ – Excellent!\n\nYour feedback helps us improve! 🧺`;
   if(kind==='nudge') return vip
     ? `Hi ${n}, Nazmul here, founder of Velto. It's been about a week since we returned your last order — I wanted to personally check in. Whenever the next load builds up, just reply and I'll have it picked up from your door at a time that suits you.`
     : `Hi ${n}, Nazmul from Velto here. It's been about a week since we returned your last order — usually right when the next load starts piling up. Whenever you're ready, just reply here and we'll arrange a pickup at your door. No forms, no fuss.`;
@@ -2438,6 +2449,10 @@ function roIntl(phone){ let d=(phone||'').replace(/\D/g,''); if(d.startsWith('0'
 function waOpen(phone, msg){ window.open(`https://wa.me/${roIntl(phone)}?text=${encodeURIComponent(msg)}`,'_blank'); }
 function roMessage(btn){ if(!btn)return; waOpen(btn.getAttribute('data-phone')||'', reorderMsg(btn.getAttribute('data-kind')||'nudge', btn.getAttribute('data-name')||'', btn.getAttribute('data-vip')==='1')); }
 function roCall(btn){ if(!btn)return; window.location.href='tel:+'+roIntl(btn.getAttribute('data-phone')||''); }
+// Google review link — REPLACE with Velto's real review link (ask Nazmul for it)
+const GOOGLE_REVIEW_URL='https://g.page/r/REPLACE_WITH_VELTO_GOOGLE_REVIEW_LINK/review';
+function reviewMsg(name){ const n=roFirstName(name); return `That genuinely made our day, ${n}! 🙏 If you have a moment, a quick Google review would mean the world to us — and it helps other people in Uttara discover Velto. It takes just a few seconds:\n${GOOGLE_REVIEW_URL}\nThank you for being part of Velto.`; }
+function roReview(btn){ if(!btn)return; waOpen(btn.getAttribute('data-phone')||'', reviewMsg(btn.getAttribute('data-name')||'')); }
 // Outcome / completed tracking (per-device for now; shared table is the next step)
 function roDoneAll(){ return lsGet('velto_reorder_done')||{}; }
 function roDoneInfo(phone,stage){ const d=roDoneAll()[phone]; return (d&&d.stage===stage)?d:null; }
@@ -2553,37 +2568,39 @@ function updateReorderHome(){
 }
 const RO_OUTCOMES=['Pickup booked','Replied','Busy','Wants reminder','No response','Complaint','Wrong number','Not interested'];
 const PR_BADGE={HIGH:'🔥 HIGH',NORMAL:'🟡 NORMAL',LOW:'⚪ LOW'};
+const STAGE_PILL={thank:['THANK YOU','sp-thank'],nudge:['DAY 7–8','sp-nudge'],standing:['STANDING','sp-standing'],overdue:['OVERDUE','sp-overdue']};
 function monthLabel(mo){ const [y,m]=mo.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m,10)-1]+" '"+y.slice(2); }
+function roScore(c){ const base={nudge:1000,overdue:800,thank:600,standing:300}[c.stage]||0; const val=Math.min(Number(c.value)||0,4000)*0.1; const done=roDoneInfo(c.phone,c.stage)?-100000:0; return base+val+done; }
 function roCard(c){
   const stage=c.stage;
-  const badge=`<span class="ro-pr ro-pr-${c.priority}">${PR_BADGE[c.priority]}</span>`;
-  const dlabel = stage==='inflight'? c.status : stage==='converted'? ('reordered '+(c.days===0?'today':c.days+'d ago')) : (c.days===0?'delivered today':c.days+'d');
-  const rev=`Last ৳${c.value.toLocaleString()} · LTV ৳${c.ltv.toLocaleString()}`+(stage!=='converted'&&stage!=='inflight'?` · next ~৳${(c.potential||0).toLocaleString()}`:'');
-  const meta=[rev,(c.items?c.items+' items':''),(c.services&&c.services.length?c.services.join(', '):''),c.zone,dlabel].filter(Boolean).join(' · ');
+  const pill=STAGE_PILL[stage]?`<span class="ro-sp ${STAGE_PILL[stage][1]}">${STAGE_PILL[stage][0]}</span>`:'';
+  const prDot=c.priority==='HIGH'?'🔥':c.priority==='NORMAL'?'🟡':'⚪';
+  const dlabel=(c.days===0?'today':c.days+'d')+' since delivery';
+  const rev=`Last ৳${c.value.toLocaleString()} · LTV ৳${c.ltv.toLocaleString()} · next ~৳${(c.potential||0).toLocaleString()}`;
+  const meta=[prDot+' '+c.priority, rev, (c.items?c.items+' items':''), (c.services&&c.services.length?c.services.join(', '):''), c.zone, dlabel].filter(Boolean).join(' · ');
   const done=roDoneInfo(c.phone,stage);
-  let body='';
-  if(stage==='inflight'||stage==='converted'){
-    body=`<div class="ro-act"><button class="ro-b ro-b-ghost" onclick="openDetail('${c.orderNum}')">View order</button></div>`;
-  } else if(done){
+  let body;
+  if(done){
     body=`<div class="ro-done">✓ ${he(done.outcome)} · today <button class="ro-undo" data-phone="${he(c.phone)}" onclick="roUndo(this)">undo</button></div>`;
   } else {
     const d=`data-name="${he(c.name)}" data-phone="${he(c.phone)}" data-kind="${stage}" data-vip="${c.priority==='HIGH'?1:0}"`;
+    const reviewBtn = stage==='thank'?`<button class="ro-b ro-b-review" data-name="${he(c.name)}" data-phone="${he(c.phone)}" onclick="roReview(this)" title="Send when they reply 5★">5★ Review</button>`:'';
     body=`<div class="ro-nba">🧠 <b>${c.nba.action}</b> — ${he(c.nba.reason)}${c.nba.success?` <span class="ro-est">est ${c.nba.success}%</span>`:''}</div>
       <div class="ro-act">
         <button class="ro-b ro-b-wa" ${d} onclick="roMessage(this)">WhatsApp</button>
         <button class="ro-b ro-b-call" data-phone="${he(c.phone)}" onclick="roCall(this)">Call</button>
         <button class="ro-b ro-b-ghost" onclick="openDetail('${c.orderNum}')">Order</button>
+        ${reviewBtn}
       </div>
       <div class="ro-out">${RO_OUTCOMES.map(o=>`<button class="ro-chip" data-phone="${he(c.phone)}" data-name="${he(c.name)}" data-potential="${c.potential||0}" data-stage="${stage}" data-outcome="${he(o)}" onclick="roOutcome(this)">${o}</button>`).join('')}</div>`;
   }
   return `<div class="ro-card${done?' is-done':''}${stage==='overdue'?' is-overdue':''}">
-    <div class="ro-card-h"><div class="ro-name">${he(c.name)}</div>${badge}</div>
+    <div class="ro-card-h"><div class="ro-name">${he(c.name)}</div>${pill}</div>
     <div class="ro-meta">${he(meta)}</div>
     ${body}
   </div>`;
 }
-function roSetFilter(f){ roFilter=(roFilter===f)?null:f; roCohort=null; renderReorder(); }
-function roOpenCohort(mo){ roCohort=mo; roFilter=null; renderReorder(); document.querySelector('.scroll').scrollTop=0; }
+function roOpenCohort(mo){ roCohort=mo; renderReorder(); document.querySelector('.scroll').scrollTop=0; }
 function roCloseCohort(){ roCohort=null; renderReorder(); }
 function renderReorder(){
   const box=document.getElementById('reorderBody'); if(!box) return;
@@ -2603,17 +2620,15 @@ function renderReorder(){
         <div class="ro-conv-sub">${m.repeatCount} repeat of ${m.anyCount} customers · target 60%</div>
       </div>
     </div>`;
-  // Monthly cohorts
+  const stages=[['In progress',r.inflight.length],['Thank you',r.thank.length],['Day 7–8',r.nudge.length],['Standing',r.standing.length],['Converted',r.converted.length]];
+  const pipe=`<div class="ro-pipe">${stages.map((s,i)=>`<div class="ro-pstage"><div class="ro-pcount">${s[1]}</div><div class="ro-plabel">${s[0]}</div></div>${i<stages.length-1?'<div class="ro-parrow">›</div>':''}`).join('')}</div>`;
   const cohorts=computeCohorts(custs);
   const hstar=h=>'★'.repeat(h)+'<span class="ro-stars-off">'+'★'.repeat(5-h)+'</span>';
   const cohortStrip=`<div class="ro-coh-h">Monthly cohorts <span class="ro-sec-sub" style="margin:0">tap a month</span></div>
     <div class="ro-coh-strip">${cohorts.map(co=>`<button class="ro-coh${roCohort===co.month?' on':''}" onclick="roOpenCohort('${co.month}')">
-        <div class="ro-coh-m">${monthLabel(co.month)}</div>
-        <div class="ro-coh-c">${co.conv}%</div>
-        <div class="ro-coh-stars">${hstar(co.health)}</div>
-        <div class="ro-coh-n">${co.total} new</div>
+        <div class="ro-coh-m">${monthLabel(co.month)}</div><div class="ro-coh-c">${co.conv}%</div>
+        <div class="ro-coh-stars">${hstar(co.health)}</div><div class="ro-coh-n">${co.total} new</div>
       </button>`).join('')||'<div class="ro-empty">No cohorts yet.</div>'}</div>`;
-  // Cohort detail view
   if(roCohort){
     const co=cohorts.find(x=>x.month===roCohort);
     if(co){
@@ -2627,38 +2642,16 @@ function renderReorder(){
       return;
     }
   }
-  // Quick filters
-  const filters=[['founder','🔥 Founder calls'],['overdue','⚠ Overdue'],['nudge',"Today's follow-ups"],['high','💎 High revenue'],['inflight','New']];
-  const filterBar=`<div class="ro-filters">${filters.map(f=>`<button class="ro-fbtn${roFilter===f[0]?' on':''}" onclick="roSetFilter('${f[0]}')">${f[1]}</button>`).join('')}</div>`;
-  // Founder calls block
-  const founder=r._founder;
-  const founderRevenue=founder.reduce((s,c)=>s+(c.potential||0),0);
-  const founderBlock=founder.length?`<div class="ro-founder">
-      <div class="ro-founder-h">📞 Founder calls today <span class="ro-count">${founder.length}</span></div>
-      <div class="ro-founder-sub">High-value customers worth a personal call. Potential revenue <b>৳${founderRevenue.toLocaleString()}</b>.</div>
-      ${founder.map(c=>roCard(c)).join('')}</div>`:'';
-  // Filtered view
-  if(roFilter){
-    let list=[];
-    if(roFilter==='founder') list=founder;
-    else if(roFilter==='overdue') list=r.overdue;
-    else if(roFilter==='nudge') list=r.thank.concat(r.nudge);
-    else if(roFilter==='high') list=custs.filter(c=>c.priority==='HIGH'&&!c.repeat).sort((a,b)=>b.value-a.value);
-    else if(roFilter==='inflight') list=r.inflight;
-    box.innerHTML=dash+cohortStrip+filterBar+`<div class="ro-sec"><div class="ro-sec-h">${filters.find(f=>f[0]===roFilter)[1]} <span class="ro-count">${list.length}</span></div>${list.length?list.map(c=>roCard(c)).join(''):'<div class="ro-empty">Nobody here right now.</div>'}</div>`;
-    return;
-  }
-  const sec=(title,sub,arr,cls)=>
-    `<div class="ro-sec ${cls||''}"><div class="ro-sec-h">${title} <span class="ro-count">${arr.length}</span></div>`+
-    (arr.length?`<div class="ro-sec-sub">${sub}</div>${arr.map(c=>roCard(c)).join('')}`:`<div class="ro-empty">Nobody here right now.</div>`)+
-    `</div>`;
-  box.innerHTML = dash + cohortStrip + filterBar + founderBlock +
-    (r.overdue.length? sec('⚠ Overdue — don\'t let these go','Past the best window and not yet reached. Highest risk of being lost. Reach them today.', r.overdue,'sec-red'):'')+
-    sec('Say thank you','Delivered in the last 2 days. A genuine thank-you now makes the next order feel natural.', r.thank)+
-    sec('Follow up now · day 7–8','Their laundry is piling up again — the highest-converting reorder window.', r.nudge)+
-    sec('Standing pickup offer','Delivered 2–4 weeks ago, still one order. Offer a standing weekly pickup before they drift.', r.standing)+
-    (r.converted.length? sec('🎉 Converted — repeat customers','They placed a second order. This is the whole game.', r.converted):'')+
-    (r.inflight.length? sec('New — first order in progress','First order not delivered yet. They enter the loop automatically once it is.', r.inflight):'');
+  // ---- ONE prioritized task list ----
+  const tasks=r.thank.concat(r.nudge,r.standing,r.overdue).sort((a,b)=>roScore(b)-roScore(a));
+  const pending=tasks.filter(c=>!roDoneInfo(c.phone,c.stage));
+  const doneList=tasks.filter(c=>roDoneInfo(c.phone,c.stage));
+  const listHtml=(pending.length?pending.map(roCard).join(''):'<div class="ro-empty">All caught up — no follow-ups due right now. 🎉</div>')+doneList.map(roCard).join('');
+  const taskSec=`<div class="ro-sec"><div class="ro-sec-h">Today's list <span class="ro-count">${pending.length}</span></div>
+    <div class="ro-sec-sub">Everything to do today, highest priority first. Overdue and the day 7–8 window lead — that's where the next order is won. Each card shows the one next action.</div>
+    ${listHtml}</div>`;
+  const conv=r.converted.length?`<div class="ro-wins">🎉 <b>${r.converted.length}</b> reordered recently — ${r.converted.slice(0,8).map(c=>he(roFirstName(c.name))).join(', ')}</div>`:'';
+  box.innerHTML = dash + pipe + cohortStrip + taskSec + conv;
 }
 async function renderHome(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
@@ -3106,9 +3099,12 @@ function bootNotifications(){
   var im=document.getElementById('invoiceModal'); if(im&&im.classList.contains('show')){im.classList.remove('show');return;}
   var det=document.getElementById('s-detail'); if(det&&det.classList.contains('active')){
     document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active');});
-    var ord=document.getElementById('s-orders'); if(ord){ord.classList.add('active');}
-    document.querySelectorAll('.nav button').forEach(function(b){b.classList.toggle('on',b.dataset.s==='s-orders');});
-    var tc=document.getElementById('topctx'); if(tc)tc.textContent='Orders';
+    var back=window.__detailOrigin||'s-orders';
+    var bs=document.getElementById(back)||document.getElementById('s-orders'); if(bs)bs.classList.add('active');
+    if(back==='s-reorder' && typeof renderReorder==='function'){ try{renderReorder();}catch(e){} }
+    var navId=(back==='s-orders'||back==='s-home'||back==='s-update'||back==='s-customers'||back==='s-new')?back:'s-home';
+    document.querySelectorAll('.nav button').forEach(function(b){b.classList.toggle('on',b.dataset.s===navId);});
+    var tc=document.getElementById('topctx'); if(tc)tc.textContent=(back==='s-reorder')?'Reorder loop':(back==='s-deliveries'?'Deliveries':(back==='s-orders'?'Orders':'Command Center'));
     return;
   }
 });})();</script>
