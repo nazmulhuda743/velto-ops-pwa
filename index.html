@@ -1291,7 +1291,7 @@ function normPhone(v){let d=(v||'').replace(/\D/g,'');if(d.startsWith('880'))d='
 function relDate(d){if(!d)return '';const dt=new Date(d),t=new Date();const days=Math.floor((new Date(t.toDateString())-new Date(dt.toDateString()))/86400000);if(days===0)return 'Today';if(days===1)return 'Yesterday';if(days<0||days>=7)return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});return days+' days ago';}
 function fullDate(d){if(!d)return '';const dt=new Date(d);if(isNaN(dt))return '';return dt.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});}
 function dhakaDateStr(d){const dt=d?new Date(d):new Date();if(isNaN(dt))return '';return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dhaka',year:'numeric',month:'2-digit',day:'2-digit'}).format(dt);}
-function buildOrderObj(r,items){return {dbid:r.id,id:r.order_number,name:r.name_snapshot||'(no name)',phone:r.phone_snapshot||'',zone:r.zone_snapshot||'Uttara',addr:r.address_snapshot||'',status:r.order_status,sc:statusClass(r.order_status),total:Number(r.total_amount)||0,paid:Number(r.amount_paid)||0,method:r.payment_method||'—',rider:r.rider_assigned||'—',items:Number(r.total_items)||0,date:relDate(r.order_date||r.created_at),fdate:fullDate(r.order_date||r.created_at),rawDate:r.order_date||r.created_at,deliveryDate:r.delivery_date||null,pickupDate:r.pickup_date||null,services:(Array.isArray(r.service_category)?r.service_category:[]),lines:(items||[]).map(it=>({svc:it.service_category,name:it.item_name,qty:it.quantity,price:Number(it.quoted_price!=null?it.quoted_price:(it.reference_price!=null?it.reference_price:0))}))};}
+function buildOrderObj(r,items){return {dbid:r.id,id:r.order_number,name:displayName(r.name_snapshot||'(no name)'),phone:r.phone_snapshot||'',zone:r.zone_snapshot||'Uttara',addr:r.address_snapshot||'',status:r.order_status,sc:statusClass(r.order_status),total:Number(r.total_amount)||0,paid:Number(r.amount_paid)||0,method:r.payment_method||'—',rider:r.rider_assigned||'—',items:Number(r.total_items)||0,date:relDate(r.order_date||r.created_at),fdate:fullDate(r.order_date||r.created_at),rawDate:r.order_date||r.created_at,deliveryDate:r.delivery_date||null,pickupDate:r.pickup_date||null,services:(Array.isArray(r.service_category)?r.service_category:[]),lines:(items||[]).map(it=>({svc:it.service_category,name:it.item_name,qty:it.quantity,price:Number(it.quoted_price!=null?it.quoted_price:(it.reference_price!=null?it.reference_price:0))}))};}
 let ordPage=1; const ORD_PAGE=20; let ordQuery='';
 async function ensureAddr(o){
   if(!o||o.addr||!o.phone||!sb)return;
@@ -1634,6 +1634,15 @@ async function lookup(){
 function selSvc(s,btn){activeSvc=s;document.querySelectorAll('#svcSeg button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');document.getElementById('itemSearch').value='';activeGroup='Popular';document.querySelectorAll('#groupTabs button').forEach(b=>b.classList.toggle('on',b.textContent.trim()==='Popular'));const cs=document.getElementById('custSvc');if(cs)cs.textContent=s;renderChips();}
 function selGroup(g,btn){activeGroup=g;document.querySelectorAll('#groupTabs button').forEach(b=>b.classList.remove('on'));if(btn)btn.classList.add('on');document.getElementById('itemSearch').value='';renderChips();}
 function he(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function displayName(name){
+  if(!name) return name||'';
+  let s=String(name).trim();
+  // "Mr.Sabuj" / "Md.Abdur" -> "Mr Sabuj" / "Md Abdur"
+  s=s.replace(/\b(Mr|Mrs|Ms|Md|Mohammad|Mohammed|Muhammad|Mohd|Mst|Dr|Engr|Prof|Adv|Miss)\.\s*/gi,(m,t)=>t+' ');
+  // "MrSaimin" -> "Mr Saimin" (honorific stuck to a capitalised name)
+  s=s.replace(/^(Mr|Mrs|Ms|Md|Mohammad|Mohammed|Muhammad|Mohd|Mst|Dr|Engr|Prof|Adv|Miss)([A-Z])/,(m,t,c)=>t+' '+c);
+  return s.replace(/\s+/g,' ').trim();
+}
 function attr(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
 function catWarn(show){const el=document.getElementById('catWarn');if(el)el.style.display=show?'':'none';}
 function scrollToChosen(){const c=document.getElementById('chosen');if(c)c.scrollIntoView({behavior:'smooth',block:'start'});}
@@ -2431,8 +2440,8 @@ function applyFilter(f){document.querySelectorAll('.fchip').forEach(c=>c.classLi
 const REORDER_WINDOWS = { thank:[0,2], nudge:[6,12], standing:[13,30], overdue:[31,59] };
 let roFilter=null, roCohort=null;
 function roFirstName(name){
-  let parts=(name||'').trim().replace(/[.,]/g,'').split(/\s+/).filter(Boolean);
-  const titles=['mr','mrs','ms','miss','md','mohammad','mohammed','muhammad','mohd','dr','engr','adv','prof'];
+  let parts=displayName(name).trim().replace(/[.,]/g,'').split(/\s+/).filter(Boolean);
+  const titles=['mr','mrs','ms','miss','md','mohammad','mohammed','muhammad','mohd','mst','dr','engr','adv','prof'];
   while(parts.length>1 && titles.includes(parts[0].toLowerCase())) parts.shift();
   return parts[0]||'there';
 }
@@ -2570,7 +2579,8 @@ const RO_OUTCOMES=['Pickup booked','Replied','Busy','Wants reminder','No respons
 const PR_BADGE={HIGH:'🔥 HIGH',NORMAL:'🟡 NORMAL',LOW:'⚪ LOW'};
 const STAGE_PILL={thank:['THANK YOU','sp-thank'],nudge:['DAY 7–8','sp-nudge'],standing:['STANDING','sp-standing'],overdue:['OVERDUE','sp-overdue']};
 function monthLabel(mo){ const [y,m]=mo.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m,10)-1]+" '"+y.slice(2); }
-function roScore(c){ const base={nudge:1000,overdue:800,thank:600,standing:300}[c.stage]||0; const val=Math.min(Number(c.value)||0,4000)*0.1; const done=roDoneInfo(c.phone,c.stage)?-100000:0; return base+val+done; }
+const STAGE_RANK={overdue:0,nudge:1,thank:2,standing:3};
+function roScore(c){ if(roDoneInfo(c.phone,c.stage)) return -1e12; const rank=(c.stage in STAGE_RANK)?STAGE_RANK[c.stage]:9; const prio=c.priority==='HIGH'?2:c.priority==='LOW'?0:1; return (9-rank)*1e7 + prio*1e4 + (Number(c.value)||0); }
 function roCard(c){
   const stage=c.stage;
   const pill=STAGE_PILL[stage]?`<span class="ro-sp ${STAGE_PILL[stage][1]}">${STAGE_PILL[stage][0]}</span>`:'';
