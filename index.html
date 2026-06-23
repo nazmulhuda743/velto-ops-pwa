@@ -285,6 +285,42 @@ body{background:radial-gradient(1100px 600px at 80% -10%,rgba(0,214,180,.10),tra
 .ro-chip:active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .ro-done{margin-top:10px;font-size:12px;font-weight:700;color:#34d399;display:flex;align-items:center;gap:8px}
 .ro-undo{background:none;border:none;color:var(--tx-3);font-size:11px;text-decoration:underline;cursor:pointer}
+.ro-card{padding:10px 12px}
+.ro-pr{flex-shrink:0;font-size:9.5px;font-weight:800;letter-spacing:.3px;padding:2px 8px;border-radius:20px}
+.ro-pr-HIGH{background:rgba(255,107,107,.16);color:#ff8a8a}
+.ro-pr-NORMAL{background:rgba(255,200,61,.14);color:#ffce5a}
+.ro-pr-LOW{background:rgba(255,255,255,.07);color:var(--tx-3)}
+.ro-nba{font-size:11px;color:var(--tx-2);background:rgba(122,184,255,.08);border:1px solid rgba(122,184,255,.18);border-radius:9px;padding:7px 9px;margin-top:8px;line-height:1.45}
+.ro-nba b{color:#9ecbff}
+.ro-est{color:#34d399;font-weight:700;margin-left:4px}
+.ro-coh-h{font-size:13px;font-weight:800;color:var(--tx);display:flex;align-items:baseline;gap:8px;margin:4px 0 8px}
+.ro-coh-strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px;margin-bottom:8px;-webkit-overflow-scrolling:touch}
+.ro-coh{flex-shrink:0;min-width:74px;text-align:center;background:var(--card);border:1px solid var(--bd-2);border-radius:12px;padding:9px 8px;cursor:pointer}
+.ro-coh.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.ro-coh-m{font-size:11px;font-weight:700;color:var(--tx-2)}
+.ro-coh-c{font-size:18px;font-weight:800;color:var(--tx);margin-top:2px}
+.ro-coh-stars{font-size:9px;color:#ffc83d;letter-spacing:.5px}
+.ro-coh-n{font-size:9.5px;color:var(--tx-3);margin-top:1px}
+.ro-coh-head{margin:4px 0 12px}
+.ro-coh-title{font-size:16px;font-weight:800;color:var(--tx)}
+.ro-coh-title .ro-stars-off{color:rgba(255,255,255,.18)}
+.ro-coh-stats{font-size:11px;color:var(--tx-3);line-height:1.6;margin-top:4px}
+.ro-mrow{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--card);border:1px solid var(--bd-2);border-radius:11px;padding:10px 12px;margin-bottom:7px;cursor:pointer}
+.ro-tag{flex-shrink:0;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;background:rgba(255,255,255,.06);color:var(--tx-3)}
+.ro-tag.ok{background:rgba(52,211,153,.14);color:#34d399}
+.ro-tag.risk{background:rgba(255,107,107,.14);color:#ff8a8a}
+.ro-tag.lost{background:rgba(255,255,255,.06);color:var(--tx-3)}
+.ro-tag.wait{background:rgba(255,200,61,.12);color:#ffce5a}
+.ro-filters{display:flex;gap:7px;overflow-x:auto;padding-bottom:10px;margin-bottom:6px;-webkit-overflow-scrolling:touch}
+.ro-fbtn{flex-shrink:0;background:var(--card);border:1px solid var(--bd-2);color:var(--tx-2);border-radius:20px;padding:7px 13px;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+.ro-fbtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.ro-founder{background:linear-gradient(135deg,#2a1530 0%,#1a1228 100%);border:1px solid rgba(255,107,107,.25);border-radius:14px;padding:13px;margin-bottom:18px}
+.ro-founder-h{font-size:13px;font-weight:800;color:#ffb088;display:flex;align-items:center;gap:8px}
+.ro-founder-sub{font-size:11px;color:var(--tx-3);margin:3px 0 10px;line-height:1.5}
+.ro-founder-sub b{color:#7ab8ff}
+.confetti{position:fixed;inset:0;pointer-events:none;z-index:400;overflow:hidden}
+.confetti i{position:absolute;top:-12px;width:8px;height:12px;border-radius:2px;animation:conffall 1.4s linear forwards}
+@keyframes conffall{to{transform:translateY(105vh) rotate(540deg);opacity:.2}}
 .is-offline .live{color:var(--amber,#f5a623)}
 .is-offline .live i{background:var(--amber,#f5a623);box-shadow:none;animation:none}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
@@ -2380,8 +2416,9 @@ function listFor(f){let list=(f==='unpaid')?ordersData.filter(o=>o.total-o.paid>
 function ordSearchInput(){const el=document.getElementById('ordSearch');ordQuery=el?el.value:'';ordPage=1;const a=document.querySelector('.fchip.on');renderOrders(listFor(a?a.dataset.f:'all'));}
 function filt(el,f){document.querySelectorAll('.fchip').forEach(c=>c.classList.remove('on'));el.classList.add('on');ordPage=1;renderOrders(listFor(f));}
 function applyFilter(f){document.querySelectorAll('.fchip').forEach(c=>c.classList.remove('on'));const key=(f==='unpaid-delivered')?'unpaid':f;const chip=document.querySelector('.fchip[data-f="'+key+'"]');(chip||document.querySelector('.fchip[data-f=all]')).classList.add('on');renderOrders(listFor(f));}
-// ============ REORDER LOOP — Mission Control: turn order #1 into order #2 ============
-const REORDER_WINDOWS = { thank:[0,2], nudge:[6,12], standing:[13,30], overdue:[31,75] };
+// ============ REORDER LOOP — Growth OS: turn order #1 into order #2 ============
+const REORDER_WINDOWS = { thank:[0,2], nudge:[6,12], standing:[13,30], overdue:[31,59] };
+let roFilter=null, roCohort=null;
 function roFirstName(name){
   let parts=(name||'').trim().replace(/[.,]/g,'').split(/\s+/).filter(Boolean);
   const titles=['mr','mrs','ms','miss','md','mohammad','mohammed','muhammad','mohd','dr','engr','adv','prof'];
@@ -2403,55 +2440,109 @@ function roMessage(btn){ if(!btn)return; waOpen(btn.getAttribute('data-phone')||
 function roCall(btn){ if(!btn)return; window.location.href='tel:+'+roIntl(btn.getAttribute('data-phone')||''); }
 // Outcome / completed tracking (per-device for now; shared table is the next step)
 function roDoneAll(){ return lsGet('velto_reorder_done')||{}; }
-function roIsDone(phone,stage){ const d=roDoneAll()[phone]; return !!(d && d.stage===stage); }
 function roDoneInfo(phone,stage){ const d=roDoneAll()[phone]; return (d&&d.stage===stage)?d:null; }
 function roLog(phone,stage,outcome){ const all=roDoneAll(); all[phone]={stage,outcome,day:dhakaDateStr(),ts:Date.now()}; lsSet('velto_reorder_done',all); }
-function roOutcome(btn){ if(!btn)return; roLog(btn.getAttribute('data-phone'),btn.getAttribute('data-stage'),btn.getAttribute('data-outcome')); toast('Logged: '+btn.getAttribute('data-outcome')); renderReorder(); updateReorderHome(); }
+function roOutcome(btn){ if(!btn)return; const oc=btn.getAttribute('data-outcome'); roLog(btn.getAttribute('data-phone'),btn.getAttribute('data-stage'),oc); if(oc==='Pickup booked'){ celebrate(btn.getAttribute('data-name')||'', btn.getAttribute('data-potential')||''); } else { toast('Logged: '+oc); } renderReorder(); updateReorderHome(); }
 function roUndo(btn){ if(!btn)return; const all=roDoneAll(); delete all[btn.getAttribute('data-phone')]; lsSet('velto_reorder_done',all); renderReorder(); updateReorderHome(); }
 function roCompletedToday(){ const t=dhakaDateStr(); return Object.values(roDoneAll()).filter(x=>x.day===t).length; }
-function roStars(value){ const v=Number(value)||0; if(v>=2500)return 5; if(v>=1500)return 4; if(v>=700)return 3; if(v>=300)return 2; return 1; }
-function computeReorder(){
+function celebrate(name, amount){
+  toast('🎉 '+(roFirstName(name))+' — pickup booked!'+(amount?(' +৳'+Number(amount).toLocaleString()):''));
+  try{
+    const wrap=document.createElement('div'); wrap.className='confetti';
+    const cols=['#1f6feb','#7a3df0','#25d366','#ffc83d','#ff6b6b'];
+    for(let i=0;i<22;i++){ const s=document.createElement('i'); s.style.left=(Math.random()*100)+'%'; s.style.background=cols[i%cols.length]; s.style.animationDelay=(Math.random()*0.25)+'s'; s.style.transform='rotate('+(Math.random()*360)+'deg)'; wrap.appendChild(s); }
+    document.body.appendChild(wrap); setTimeout(()=>wrap.remove(),1500);
+  }catch(e){}
+}
+function roNBA(c){
+  if(c.stage==='thank') return {action:'WhatsApp',reason:'Thank them within 48h — the first impression drives the second order.',success:70};
+  if(c.stage==='nudge') return c.priority==='HIGH'
+    ? {action:'Call',reason:'High-value first order, in the day-7 reorder window — worth a personal call.',success:75}
+    : {action:'WhatsApp',reason:'Reorder window is open — their laundry is piling up again.',success:66};
+  if(c.stage==='standing') return {action:'WhatsApp',reason:'Offer a standing weekly pickup to build the habit.',success:44};
+  if(c.stage==='overdue') return {action:'Call',reason:'Slipping away — a personal call recovers more than a text now.',success:33};
+  return {action:'Wait',reason:'No action needed yet.',success:0};
+}
+function roBuildCustomers(){
   const byPhone={};
   for(const o of ordersData){ const ph=(o.phone||'').trim(); if(!ph) continue; (byPhone[ph]=byPhone[ph]||[]).push(o); }
   const today=new Date(dhakaDateStr()+'T00:00:00');
-  const out={inflight:[],thank:[],nudge:[],standing:[],overdue:[],converted:[]};
-  let anyCount=0, repeatCount=0;
   const dayDiff=(s)=>{const d=dhakaDateStr(s); return d?Math.floor((today-new Date(d+'T00:00:00'))/86400000):null;};
+  const custs=[];
   for(const ph in byPhone){
-    const list=byPhone[ph].slice().sort((a,b)=>new Date(a.rawDate)-new Date(b.rawDate));
-    const valid=list.filter(o=>o.status!=='Cancelled'); if(!valid.length) continue;
-    anyCount++;
+    const all=byPhone[ph].slice().sort((a,b)=>new Date(a.rawDate)-new Date(b.rawDate));
+    const valid=all.filter(o=>o.status!=='Cancelled'); if(!valid.length) continue;
     const last=valid[valid.length-1];
-    const base={name:last.name,phone:ph,orderNum:last.id,value:last.total,status:last.status,zone:last.zone,items:last.items,services:last.services||[]};
-    if(valid.length>=2){
-      repeatCount++;
+    const ltv=valid.reduce((s,o)=>s+(Number(o.total)||0),0);
+    const orderCount=valid.length, avg=Math.round(ltv/orderCount);
+    const firstDate=dhakaDateStr(valid[0].rawDate);
+    const secondDate=valid[1]?dhakaDateStr(valid[1].rawDate):null;
+    const c={name:last.name,phone:ph,orderNum:last.id,value:Number(last.total)||0,ltv,orderCount,avg,
+      zone:last.zone,items:last.items,services:last.services||[],firstDate,secondDate,
+      acqMonth:firstDate?firstDate.slice(0,7):null,status:last.status,repeat:orderCount>=2};
+    if(c.repeat){
       const d2=dayDiff(valid[1].rawDate);
-      if(d2!=null && d2<=21){ out.converted.push({...base,orders:valid.length,days:d2}); }
-      continue;                                  // repeat customers are won — out of the loop
+      c.daysToSecond=(firstDate&&secondDate)?Math.floor((new Date(secondDate)-new Date(firstDate))/86400000):null;
+      c.stage=(d2!=null&&d2<=21)?'converted':'repeat'; c.days=d2;
+    } else {
+      const o=valid[0];
+      if(o.status!=='Delivered'){ c.stage='inflight'; }
+      else { const days=dayDiff(o.deliveryDate||o.rawDate); c.days=days;
+        if(days==null) c.stage='gap';
+        else if(days<=2) c.stage='thank';
+        else if(days>=6&&days<=12) c.stage='nudge';
+        else if(days>=13&&days<=30) c.stage='standing';
+        else if(days>=31&&days<=59) c.stage='overdue';
+        else if(days>=60) c.stage='lost';
+        else c.stage='gap';
+      }
     }
-    // one-and-done
-    const o=valid[0];
-    if(o.status!=='Delivered'){ out.inflight.push(base); continue; }
-    const days=dayDiff(o.deliveryDate||o.rawDate); if(days==null) continue;
-    base.days=days;
-    if(days<=REORDER_WINDOWS.thank[1]) out.thank.push(base);
-    else if(days>=REORDER_WINDOWS.nudge[0]&&days<=REORDER_WINDOWS.nudge[1]) out.nudge.push(base);
-    else if(days>=REORDER_WINDOWS.standing[0]&&days<=REORDER_WINDOWS.standing[1]) out.standing.push(base);
-    else if(days>=REORDER_WINDOWS.overdue[0]&&days<=REORDER_WINDOWS.overdue[1]) out.overdue.push(base);
+    c.priority=(c.value>=1500||c.ltv>=3000||c.stage==='overdue')?'HIGH':(c.value<400?'LOW':'NORMAL');
+    c.potential=c.repeat?c.avg:c.value;
+    c.nba=roNBA(c);
+    custs.push(c);
+  }
+  return custs;
+}
+function computeReorder(){
+  const custs=roBuildCustomers();
+  const out={inflight:[],thank:[],nudge:[],standing:[],overdue:[],converted:[],_all:custs};
+  let repeatCount=0;
+  for(const c of custs){
+    if(c.repeat) repeatCount++;
+    if(out[c.stage]) out[c.stage].push(c);
   }
   out.thank.sort((a,b)=>a.days-b.days);
-  out.nudge.sort((a,b)=>(roStars(b.value)-roStars(a.value))||Math.abs(a.days-8)-Math.abs(b.days-8));
+  out.nudge.sort((a,b)=>(b.value-a.value)||Math.abs(a.days-8)-Math.abs(b.days-8));
   out.standing.sort((a,b)=>a.days-b.days);
-  out.overdue.sort((a,b)=>a.days-b.days);
+  out.overdue.sort((a,b)=>b.value-a.value);
   out.converted.sort((a,b)=>a.days-b.days);
-  // metrics
   const reachable=out.nudge.concat(out.overdue);
-  const revenueWaiting=reachable.reduce((s,x)=>s+(Number(x.value)||0),0);
+  const revenueWaiting=reachable.reduce((s,x)=>s+(x.potential||0),0);
   const toReach=out.thank.length+out.nudge.length+out.overdue.length;
   const completed=roCompletedToday();
-  const convRate=anyCount?Math.round(repeatCount/anyCount*100):0;
-  out._m={toReach,completed,remaining:Math.max(0,toReach-completed),revenueWaiting,convRate,repeatCount,anyCount};
+  const convRate=custs.length?Math.round(repeatCount/custs.length*100):0;
+  out._m={toReach,completed,remaining:Math.max(0,toReach-completed),revenueWaiting,convRate,repeatCount,anyCount:custs.length};
+  // founder calls: HIGH priority customers in nudge/overdue
+  out._founder=out.nudge.concat(out.overdue).filter(c=>c.priority==='HIGH').sort((a,b)=>b.value-a.value).slice(0,5);
   return out;
+}
+function computeCohorts(custs){
+  const m={};
+  for(const c of custs){ if(!c.acqMonth) continue; (m[c.acqMonth]=m[c.acqMonth]||[]).push(c); }
+  return Object.keys(m).sort().map(mo=>{
+    const arr=m[mo], total=arr.length;
+    const converted=arr.filter(c=>c.repeat).length;
+    const atRisk=arr.filter(c=>c.stage==='overdue').length;
+    const lost=arr.filter(c=>c.stage==='lost').length;
+    const waiting=total-converted-atRisk-lost;
+    const conv=total?Math.round(converted/total*100):0;
+    const d2=arr.filter(c=>c.daysToSecond!=null).map(c=>c.daysToSecond);
+    const avgDays=d2.length?Math.round(d2.reduce((a,b)=>a+b,0)/d2.length):null;
+    const revenue=arr.reduce((s,c)=>s+(c.ltv||0),0);
+    const health=conv>=60?5:conv>=50?4:conv>=40?3:conv>=30?2:1;
+    return {month:mo,total,converted,waiting,atRisk,lost,conv,avgDays,revenue,health,custs:arr};
+  });
 }
 function updateReorderHome(){
   try{
@@ -2460,39 +2551,43 @@ function updateReorderHome(){
     const dot=document.getElementById('roDueDot'); if(dot) dot.style.display=(r.nudge.length+r.overdue.length)>0?'inline-block':'none';
   }catch(e){console.warn('reorder home:',e);}
 }
-const RO_OUTCOMES=['Pickup booked','Replied','Busy','No response','Not interested','Wrong number'];
-function roCard(rec,stage){
-  const stars=roStars(rec.value), vip=stars>=4;
-  const starHtml='<span class="ro-stars">'+'★'.repeat(stars)+'<span class="ro-stars-off">'+'★'.repeat(5-stars)+'</span></span>';
-  const val=rec.value?('৳'+Number(rec.value).toLocaleString()):'';
-  const dlabel = stage==='inflight'? rec.status : stage==='converted'? ('reordered '+(rec.days===0?'today':rec.days+'d ago')) : (rec.days===0?'delivered today':rec.days+'d since delivery');
-  const line2=[rec.orderNum,(rec.items?rec.items+' items':''),(rec.services&&rec.services.length?rec.services.join(', '):'')].filter(Boolean).join(' · ');
-  const line3=[rec.zone,dlabel].filter(Boolean).join(' · ');
-  const done=roDoneInfo(rec.phone,stage);
-  let actions='';
+const RO_OUTCOMES=['Pickup booked','Replied','Busy','Wants reminder','No response','Complaint','Wrong number','Not interested'];
+const PR_BADGE={HIGH:'🔥 HIGH',NORMAL:'🟡 NORMAL',LOW:'⚪ LOW'};
+function monthLabel(mo){ const [y,m]=mo.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m,10)-1]+" '"+y.slice(2); }
+function roCard(c){
+  const stage=c.stage;
+  const badge=`<span class="ro-pr ro-pr-${c.priority}">${PR_BADGE[c.priority]}</span>`;
+  const dlabel = stage==='inflight'? c.status : stage==='converted'? ('reordered '+(c.days===0?'today':c.days+'d ago')) : (c.days===0?'delivered today':c.days+'d');
+  const rev=`Last ৳${c.value.toLocaleString()} · LTV ৳${c.ltv.toLocaleString()}`+(stage!=='converted'&&stage!=='inflight'?` · next ~৳${(c.potential||0).toLocaleString()}`:'');
+  const meta=[rev,(c.items?c.items+' items':''),(c.services&&c.services.length?c.services.join(', '):''),c.zone,dlabel].filter(Boolean).join(' · ');
+  const done=roDoneInfo(c.phone,stage);
+  let body='';
   if(stage==='inflight'||stage==='converted'){
-    actions=`<div class="ro-act"><button class="ro-b ro-b-ghost" onclick="openDetail('${rec.orderNum}')">View order</button></div>`;
+    body=`<div class="ro-act"><button class="ro-b ro-b-ghost" onclick="openDetail('${c.orderNum}')">View order</button></div>`;
   } else if(done){
-    actions=`<div class="ro-done">✓ ${he(done.outcome)} · today <button class="ro-undo" data-phone="${he(rec.phone)}" onclick="roUndo(this)">undo</button></div>`;
+    body=`<div class="ro-done">✓ ${he(done.outcome)} · today <button class="ro-undo" data-phone="${he(c.phone)}" onclick="roUndo(this)">undo</button></div>`;
   } else {
-    const d=`data-name="${he(rec.name)}" data-phone="${he(rec.phone)}" data-kind="${stage}" data-vip="${vip?1:0}"`;
-    actions=`<div class="ro-act">
+    const d=`data-name="${he(c.name)}" data-phone="${he(c.phone)}" data-kind="${stage}" data-vip="${c.priority==='HIGH'?1:0}"`;
+    body=`<div class="ro-nba">🧠 <b>${c.nba.action}</b> — ${he(c.nba.reason)}${c.nba.success?` <span class="ro-est">est ${c.nba.success}%</span>`:''}</div>
+      <div class="ro-act">
         <button class="ro-b ro-b-wa" ${d} onclick="roMessage(this)">WhatsApp</button>
-        <button class="ro-b ro-b-call" data-phone="${he(rec.phone)}" onclick="roCall(this)">Call</button>
-        <button class="ro-b ro-b-ghost" onclick="openDetail('${rec.orderNum}')">Order</button>
+        <button class="ro-b ro-b-call" data-phone="${he(c.phone)}" onclick="roCall(this)">Call</button>
+        <button class="ro-b ro-b-ghost" onclick="openDetail('${c.orderNum}')">Order</button>
       </div>
-      <div class="ro-out">${RO_OUTCOMES.map(o=>`<button class="ro-chip" data-phone="${he(rec.phone)}" data-stage="${stage}" data-outcome="${he(o)}" onclick="roOutcome(this)">${o}</button>`).join('')}</div>`;
+      <div class="ro-out">${RO_OUTCOMES.map(o=>`<button class="ro-chip" data-phone="${he(c.phone)}" data-name="${he(c.name)}" data-potential="${c.potential||0}" data-stage="${stage}" data-outcome="${he(o)}" onclick="roOutcome(this)">${o}</button>`).join('')}</div>`;
   }
   return `<div class="ro-card${done?' is-done':''}${stage==='overdue'?' is-overdue':''}">
-    <div class="ro-card-h"><div class="ro-name">${he(rec.name)}</div><div class="ro-val">${val}</div></div>
-    <div class="ro-meta">${starHtml}${line2?'<span>'+he(line2)+'</span>':''}</div>
-    <div class="ro-meta2">${he(line3)}</div>
-    ${actions}
+    <div class="ro-card-h"><div class="ro-name">${he(c.name)}</div>${badge}</div>
+    <div class="ro-meta">${he(meta)}</div>
+    ${body}
   </div>`;
 }
+function roSetFilter(f){ roFilter=(roFilter===f)?null:f; roCohort=null; renderReorder(); }
+function roOpenCohort(mo){ roCohort=mo; roFilter=null; renderReorder(); document.querySelector('.scroll').scrollTop=0; }
+function roCloseCohort(){ roCohort=null; renderReorder(); }
 function renderReorder(){
   const box=document.getElementById('reorderBody'); if(!box) return;
-  const r=computeReorder(), m=r._m;
+  const r=computeReorder(), m=r._m, custs=r._all;
   const tile=(label,val,cls)=>`<div class="ro-tile ${cls||''}"><div class="ro-tile-v">${val}</div><div class="ro-tile-l">${label}</div></div>`;
   const dash=`<div class="ro-dash">
       <div class="ro-dash-h">Today's mission</div>
@@ -2508,19 +2603,62 @@ function renderReorder(){
         <div class="ro-conv-sub">${m.repeatCount} repeat of ${m.anyCount} customers · target 60%</div>
       </div>
     </div>`;
-  const stages=[['In progress',r.inflight.length],['Thank you',r.thank.length],['Day 7–8',r.nudge.length],['Standing',r.standing.length],['Converted',r.converted.length]];
-  const pipe=`<div class="ro-pipe">${stages.map((s,i)=>`<div class="ro-pstage"><div class="ro-pcount">${s[1]}</div><div class="ro-plabel">${s[0]}</div></div>${i<stages.length-1?'<div class="ro-parrow">›</div>':''}`).join('')}</div>`;
-  const sec=(title,sub,arr,stage,cls)=>
+  // Monthly cohorts
+  const cohorts=computeCohorts(custs);
+  const hstar=h=>'★'.repeat(h)+'<span class="ro-stars-off">'+'★'.repeat(5-h)+'</span>';
+  const cohortStrip=`<div class="ro-coh-h">Monthly cohorts <span class="ro-sec-sub" style="margin:0">tap a month</span></div>
+    <div class="ro-coh-strip">${cohorts.map(co=>`<button class="ro-coh${roCohort===co.month?' on':''}" onclick="roOpenCohort('${co.month}')">
+        <div class="ro-coh-m">${monthLabel(co.month)}</div>
+        <div class="ro-coh-c">${co.conv}%</div>
+        <div class="ro-coh-stars">${hstar(co.health)}</div>
+        <div class="ro-coh-n">${co.total} new</div>
+      </button>`).join('')||'<div class="ro-empty">No cohorts yet.</div>'}</div>`;
+  // Cohort detail view
+  if(roCohort){
+    const co=cohorts.find(x=>x.month===roCohort);
+    if(co){
+      const statusOf=c=>c.repeat?'<span class="ro-tag ok">✓ Converted'+(c.daysToSecond!=null?' · '+c.daysToSecond+'d':'')+'</span>':c.stage==='overdue'?'<span class="ro-tag risk">⚠ At risk · '+c.days+'d</span>':c.stage==='lost'?'<span class="ro-tag lost">Lost · '+c.days+'d</span>':c.stage==='inflight'?'<span class="ro-tag">In progress</span>':'<span class="ro-tag wait">Waiting'+(c.days!=null?' · '+c.days+'d':'')+'</span>';
+      box.innerHTML=`<button class="backbtn" onclick="roCloseCohort()">‹ Back to mission</button>
+        <div class="ro-coh-head"><div class="ro-coh-title">${monthLabel(co.month)} cohort ${hstar(co.health)}</div>
+        <div class="ro-coh-stats">${co.total} new · ${co.converted} converted · ${co.waiting} waiting · ${co.atRisk} at risk · ${co.lost} lost · ${co.conv}% conv${co.avgDays!=null?' · avg '+co.avgDays+'d to 2nd':''} · ৳${co.revenue.toLocaleString()}</div></div>
+        ${co.custs.slice().sort((a,b)=>(a.repeat?1:0)-(b.repeat?1:0)).map(c=>`<div class="ro-mrow" onclick="openDetail('${c.orderNum}')">
+            <div><div class="ro-name">${he(c.name)}</div><div class="ro-meta2">first ${c.firstDate||'—'}${c.secondDate?' · 2nd '+c.secondDate:''} · LTV ৳${c.ltv.toLocaleString()}</div></div>
+            ${statusOf(c)}</div>`).join('')}`;
+      return;
+    }
+  }
+  // Quick filters
+  const filters=[['founder','🔥 Founder calls'],['overdue','⚠ Overdue'],['nudge',"Today's follow-ups"],['high','💎 High revenue'],['inflight','New']];
+  const filterBar=`<div class="ro-filters">${filters.map(f=>`<button class="ro-fbtn${roFilter===f[0]?' on':''}" onclick="roSetFilter('${f[0]}')">${f[1]}</button>`).join('')}</div>`;
+  // Founder calls block
+  const founder=r._founder;
+  const founderRevenue=founder.reduce((s,c)=>s+(c.potential||0),0);
+  const founderBlock=founder.length?`<div class="ro-founder">
+      <div class="ro-founder-h">📞 Founder calls today <span class="ro-count">${founder.length}</span></div>
+      <div class="ro-founder-sub">High-value customers worth a personal call. Potential revenue <b>৳${founderRevenue.toLocaleString()}</b>.</div>
+      ${founder.map(c=>roCard(c)).join('')}</div>`:'';
+  // Filtered view
+  if(roFilter){
+    let list=[];
+    if(roFilter==='founder') list=founder;
+    else if(roFilter==='overdue') list=r.overdue;
+    else if(roFilter==='nudge') list=r.thank.concat(r.nudge);
+    else if(roFilter==='high') list=custs.filter(c=>c.priority==='HIGH'&&!c.repeat).sort((a,b)=>b.value-a.value);
+    else if(roFilter==='inflight') list=r.inflight;
+    box.innerHTML=dash+cohortStrip+filterBar+`<div class="ro-sec"><div class="ro-sec-h">${filters.find(f=>f[0]===roFilter)[1]} <span class="ro-count">${list.length}</span></div>${list.length?list.map(c=>roCard(c)).join(''):'<div class="ro-empty">Nobody here right now.</div>'}</div>`;
+    return;
+  }
+  const sec=(title,sub,arr,cls)=>
     `<div class="ro-sec ${cls||''}"><div class="ro-sec-h">${title} <span class="ro-count">${arr.length}</span></div>`+
-    (arr.length?`<div class="ro-sec-sub">${sub}</div>${arr.map(x=>roCard(x,stage)).join('')}`:`<div class="ro-empty">Nobody here right now.</div>`)+
+    (arr.length?`<div class="ro-sec-sub">${sub}</div>${arr.map(c=>roCard(c)).join('')}`:`<div class="ro-empty">Nobody here right now.</div>`)+
     `</div>`;
-  box.innerHTML = dash + pipe +
-    (r.overdue.length? sec('⚠ Overdue — don\'t let these go','Past the best window and not yet reached. Highest risk of being lost for good. Reach them today.', r.overdue, 'overdue','sec-red'):'')+
-    sec('Say thank you','Delivered in the last 2 days. A genuine thank-you now makes the next order feel natural.', r.thank, 'thank')+
-    sec('Follow up now · day 7–8','Their laundry is piling up again — the highest-converting reorder window. A light, founder-voiced nudge works best.', r.nudge, 'nudge')+
-    sec('Standing pickup offer','Delivered 2–4 weeks ago, still one order. Offer a standing weekly pickup before they drift.', r.standing, 'standing')+
-    (r.converted.length? sec('🎉 Converted — repeat customers','They placed a second order. This is the whole game. Keep them delighted.', r.converted, 'converted'):'')+
-    (r.inflight.length? sec('New — first order in progress','First order not delivered yet. They enter the loop automatically once it is.', r.inflight, 'inflight'):'');
+  box.innerHTML = dash + cohortStrip + filterBar + founderBlock +
+    (r.overdue.length? sec('⚠ Overdue — don\'t let these go','Past the best window and not yet reached. Highest risk of being lost. Reach them today.', r.overdue,'sec-red'):'')+
+    sec('Say thank you','Delivered in the last 2 days. A genuine thank-you now makes the next order feel natural.', r.thank)+
+    sec('Follow up now · day 7–8','Their laundry is piling up again — the highest-converting reorder window.', r.nudge)+
+    sec('Standing pickup offer','Delivered 2–4 weeks ago, still one order. Offer a standing weekly pickup before they drift.', r.standing)+
+    (r.converted.length? sec('🎉 Converted — repeat customers','They placed a second order. This is the whole game.', r.converted):'')+
+    (r.inflight.length? sec('New — first order in progress','First order not delivered yet. They enter the loop automatically once it is.', r.inflight):'');
 }
 async function renderHome(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
