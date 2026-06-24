@@ -293,6 +293,12 @@ body{background:radial-gradient(1100px 600px at 80% -10%,rgba(0,214,180,.10),tra
 .ro-b-review{background:rgba(255,200,61,.16);color:#ffce5a;border:1px solid rgba(255,200,61,.3)}
 .ro-wins{margin-top:6px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.2);border-radius:12px;padding:11px 13px;font-size:12px;color:var(--tx-2);line-height:1.5}
 .ro-wins b{color:#34d399}
+.ro-note{display:flex;gap:6px;margin-top:8px}
+.ro-note-input{flex:1;min-width:0;background:var(--bg-2);border:1px solid var(--line);color:var(--tx-1);font-family:inherit;font-size:12px;border-radius:9px;padding:8px 10px}
+.ro-note-input:focus{outline:none;border-color:var(--accent-bright)}
+.ro-note-input::placeholder{color:var(--tx-3)}
+.ro-note-save{flex-shrink:0;background:var(--accent);border:none;color:#fff;font-family:inherit;font-size:12px;font-weight:700;border-radius:9px;padding:8px 14px;cursor:pointer}
+.ro-done{font-size:12px;color:var(--tx-2);line-height:1.5}
 .ro-card{padding:10px 12px}
 .ro-pr{flex-shrink:0;font-size:9.5px;font-weight:800;letter-spacing:.3px;padding:2px 8px;border-radius:20px}
 .ro-pr-HIGH{background:rgba(255,107,107,.16);color:#ff8a8a}
@@ -1272,6 +1278,7 @@ function unlockApp(p){
   const av=document.querySelector('.greet .av'); if(av) av.textContent=(p.name||'V').trim().charAt(0).toUpperCase();
   loadOrders();
   loadCatalog();
+  loadReorderActions();
   wirePickerEvents();
   loadNextId();
   navTo('s-home');
@@ -1378,7 +1385,7 @@ function openScreen(id,title){
   document.querySelector('.scroll').scrollTop=0;
   if(id==='s-customers')loadCustomers();
   if(id==='s-deliveries')loadDeliveries();
-  if(id==='s-reorder')renderReorder();
+  if(id==='s-reorder'){ renderReorder(); loadReorderActions().then(()=>renderReorder()); }
 }
 
 // ===== Customers tab =====
@@ -2463,12 +2470,48 @@ const GOOGLE_REVIEW_URL='https://g.page/r/REPLACE_WITH_VELTO_GOOGLE_REVIEW_LINK/
 function reviewMsg(name){ const n=roFirstName(name); return `That genuinely made our day, ${n}! 🙏 If you have a moment, a quick Google review would mean the world to us — and it helps other people in Uttara discover Velto. It takes just a few seconds:\n${GOOGLE_REVIEW_URL}\nThank you for being part of Velto.`; }
 function roReview(btn){ if(!btn)return; waOpen(btn.getAttribute('data-phone')||'', reviewMsg(btn.getAttribute('data-name')||'')); }
 // Outcome / completed tracking (per-device for now; shared table is the next step)
-function roDoneAll(){ return lsGet('velto_reorder_done')||{}; }
-function roDoneInfo(phone,stage){ const d=roDoneAll()[phone]; return (d&&d.stage===stage)?d:null; }
-function roLog(phone,stage,outcome){ const all=roDoneAll(); all[phone]={stage,outcome,day:dhakaDateStr(),ts:Date.now()}; lsSet('velto_reorder_done',all); }
-function roOutcome(btn){ if(!btn)return; const oc=btn.getAttribute('data-outcome'); roLog(btn.getAttribute('data-phone'),btn.getAttribute('data-stage'),oc); if(oc==='Pickup booked'){ celebrate(btn.getAttribute('data-name')||'', btn.getAttribute('data-potential')||''); } else { toast('Logged: '+oc); } renderReorder(); updateReorderHome(); }
-function roUndo(btn){ if(!btn)return; const all=roDoneAll(); delete all[btn.getAttribute('data-phone')]; lsSet('velto_reorder_done',all); renderReorder(); updateReorderHome(); }
-function roCompletedToday(){ const t=dhakaDateStr(); return Object.values(roDoneAll()).filter(x=>x.day===t).length; }
+// ---- Shared follow-up log (reorder_actions table) so the whole team sees outcomes ----
+let roActions = lsGet('velto_reorder_actions') || [];
+let _roMap = {};
+function roBuildMap(){ const m={}; for(const a of roActions){ const k=a.customer_phone+'|'+a.stage; if(!m[k] || new Date(a.created_at)>new Date(m[k].created_at)) m[k]=a; } _roMap=m; }
+async function loadReorderActions(){
+  if(!sb || (typeof navigator!=='undefined' && navigator.onLine===false)){ roBuildMap(); return; }
+  try{
+    const since=new Date(Date.now()-120*86400000).toISOString();
+    const {data,error}=await sb.from('reorder_actions').select('*').gte('created_at',since).order('created_at',{ascending:false});
+    if(!error && data){ roActions=data; lsSet('velto_reorder_actions',data); }
+  }catch(e){ console.warn('load reorder actions:',e); }
+  roBuildMap();
+}
+function roDoneInfo(phone,stage){ return _roMap[phone+'|'+stage]||null; }
+function roCompletedToday(){ const t=dhakaDateStr(); const seen={}; let n=0; for(const a of roActions){ if(dhakaDateStr(a.created_at)===t){ const k=a.customer_phone+'|'+a.stage; if(!seen[k]){seen[k]=1;n++;} } } return n; }
+async function roLog(phone,stage,outcome,note,orderNum){
+  const rec={customer_phone:phone,order_number:orderNum||null,stage,outcome:outcome||'Logged',note:note||null,created_by:(currentUser?currentUser.id:null),created_by_name:currentName||'Staff',created_at:new Date().toISOString()};
+  roActions.unshift(rec); lsSet('velto_reorder_actions',roActions); roBuildMap();   // optimistic
+  renderReorder(); updateReorderHome();
+  if(sb){ try{ const ins={...rec}; delete ins.created_at; const {data,error}=await sb.from('reorder_actions').insert(ins).select().maybeSingle(); if(error){ console.warn('reorder insert:',error); toast('Saved on device — sync failed, will retry'); } else if(data){ rec.id=data.id; lsSet('velto_reorder_actions',roActions); } }catch(e){ console.warn('reorder insert:',e); } }
+}
+function roOutcome(btn){
+  if(!btn)return;
+  const card=btn.closest('.ro-card'); const inp=card?card.querySelector('.ro-note-input'):null; const note=inp?inp.value.trim():'';
+  const oc=btn.getAttribute('data-outcome');
+  roLog(btn.getAttribute('data-phone'),btn.getAttribute('data-stage'),oc,note,btn.getAttribute('data-order'));
+  if(oc==='Pickup booked') celebrate(btn.getAttribute('data-name')||'', btn.getAttribute('data-potential')||''); else toast('Logged: '+oc);
+}
+function roSaveNote(btn){
+  if(!btn)return;
+  const card=btn.closest('.ro-card'); const inp=card?card.querySelector('.ro-note-input'):null; const note=inp?inp.value.trim():'';
+  if(!note){ toast('Write the response first'); if(inp)inp.focus(); return; }
+  roLog(btn.getAttribute('data-phone'),btn.getAttribute('data-stage'),note,note,btn.getAttribute('data-order'));
+  toast('Logged');
+}
+async function roUndo(btn){
+  if(!btn)return; const phone=btn.getAttribute('data-phone'), stage=btn.getAttribute('data-stage');
+  const a=roDoneInfo(phone,stage); if(!a){ return; }
+  roActions=roActions.filter(x=>x!==a && (!a.id || x.id!==a.id)); lsSet('velto_reorder_actions',roActions); roBuildMap();
+  renderReorder(); updateReorderHome();
+  if(sb && a.id){ try{ await sb.from('reorder_actions').delete().eq('id',a.id); }catch(e){ console.warn('reorder undo:',e); } }
+}
 function celebrate(name, amount){
   toast('🎉 '+(roFirstName(name))+' — pickup booked!'+(amount?(' +৳'+Number(amount).toLocaleString()):''));
   try{
@@ -2591,7 +2634,10 @@ function roCard(c){
   const done=roDoneInfo(c.phone,stage);
   let body;
   if(done){
-    body=`<div class="ro-done">✓ ${he(done.outcome)} · today <button class="ro-undo" data-phone="${he(c.phone)}" onclick="roUndo(this)">undo</button></div>`;
+    const who=done.created_by_name?(' · '+he(done.created_by_name)):'';
+    const when=' · '+(dhakaDateStr(done.created_at)===dhakaDateStr()?'today':relDate(done.created_at));
+    const noteHtml=(done.note && done.note!==done.outcome)?(' — “'+he(done.note)+'”'):'';
+    body=`<div class="ro-done">✓ ${he(done.outcome)}${noteHtml}${who}${when} <button class="ro-undo" data-phone="${he(c.phone)}" data-stage="${stage}" onclick="roUndo(this)">undo</button></div>`;
   } else {
     const d=`data-name="${he(c.name)}" data-phone="${he(c.phone)}" data-kind="${stage}" data-vip="${c.priority==='HIGH'?1:0}"`;
     const reviewBtn = stage==='thank'?`<button class="ro-b ro-b-review" data-name="${he(c.name)}" data-phone="${he(c.phone)}" onclick="roReview(this)" title="Send when they reply 5★">5★ Review</button>`:'';
@@ -2602,7 +2648,8 @@ function roCard(c){
         <button class="ro-b ro-b-ghost" onclick="openDetail('${c.orderNum}')">Order</button>
         ${reviewBtn}
       </div>
-      <div class="ro-out">${RO_OUTCOMES.map(o=>`<button class="ro-chip" data-phone="${he(c.phone)}" data-name="${he(c.name)}" data-potential="${c.potential||0}" data-stage="${stage}" data-outcome="${he(o)}" onclick="roOutcome(this)">${o}</button>`).join('')}</div>`;
+      <div class="ro-out">${RO_OUTCOMES.map(o=>`<button class="ro-chip" data-phone="${he(c.phone)}" data-name="${he(c.name)}" data-potential="${c.potential||0}" data-stage="${stage}" data-order="${he(c.orderNum)}" data-outcome="${he(o)}" onclick="roOutcome(this)">${o}</button>`).join('')}</div>
+      <div class="ro-note"><input class="ro-note-input" type="text" placeholder="Or write what happened / the customer's response…" maxlength="240"><button class="ro-note-save" data-phone="${he(c.phone)}" data-stage="${stage}" data-order="${he(c.orderNum)}" onclick="roSaveNote(this)">Save</button></div>`;
   }
   return `<div class="ro-card${done?' is-done':''}${stage==='overdue'?' is-overdue':''}">
     <div class="ro-card-h"><div class="ro-name">${he(c.name)}</div>${pill}</div>
@@ -2614,6 +2661,7 @@ function roOpenCohort(mo){ roCohort=mo; renderReorder(); document.querySelector(
 function roCloseCohort(){ roCohort=null; renderReorder(); }
 function renderReorder(){
   const box=document.getElementById('reorderBody'); if(!box) return;
+  roBuildMap();
   const r=computeReorder(), m=r._m, custs=r._all;
   const tile=(label,val,cls)=>`<div class="ro-tile ${cls||''}"><div class="ro-tile-v">${val}</div><div class="ro-tile-l">${label}</div></div>`;
   const dash=`<div class="ro-dash">
