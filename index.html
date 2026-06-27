@@ -2532,7 +2532,7 @@ function roNBA(c){
 }
 function roBuildCustomers(){
   const byPhone={};
-  for(const o of ordersData){ const ph=(o.phone||'').trim(); if(!ph) continue; (byPhone[ph]=byPhone[ph]||[]).push(o); }
+  for(const o of ordersData){ const ph=normPhone(o.phone); if(!/^01[0-9]{9}$/.test(ph)) continue; (byPhone[ph]=byPhone[ph]||[]).push(o); }
   const today=new Date(dhakaDateStr()+'T00:00:00');
   const dayDiff=(s)=>{const d=dhakaDateStr(s); return d?Math.floor((today-new Date(d+'T00:00:00'))/86400000):null;};
   const custs=[];
