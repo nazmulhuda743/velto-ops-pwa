@@ -786,11 +786,6 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
           <span><b id="roLast">0</b> last call</span>
         </div>
       </button>
-      <button class="reorder-home" id="customersCard" onclick="navTo('s-customers')">
-        <div class="rh-top"><span class="rh-title">👥 Customers</span><span class="rh-go">→</span></div>
-        <div class="rh-stats" style="margin-top:2px"><span><b id="custTotalHome" style="font-size:22px">0</b> total customers</span></div>
-        <div class="rh-sub" id="custGrowthCopy">Loading growth…</div>
-      </button>
       <button class="fin-link" onclick="openScreen('s-deliveries','Deliveries')">🛵 Deliveries &amp; collections →</button>
       <div class="section-t">Today</div>
       <div class="stat-grid">
@@ -812,7 +807,12 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
       <!-- BI-START -->
       <div class="section-t" style="display:flex;align-items:center;gap:8px"><span>Business Intelligence</span><span style="font-size:10px;color:var(--tx-3);font-weight:500;text-transform:none;letter-spacing:.2px">Operational signals · predictive analytics</span></div>
 
-      <div class="bi-grid">
+      <div class="bi-grid tri">
+        <div class="bi-card">
+          <div class="bi-k">Customers</div>
+          <div class="bi-v mono" id="dsCustTotal">—</div>
+          <div class="bi-sub" id="dsCustGrowth">—</div>
+        </div>
         <div class="bi-card">
           <div class="bi-k">Repeat Rate</div>
           <div class="bi-v mono" id="dsRepeatRate">—</div>
@@ -1422,25 +1422,25 @@ async function loadCustomers(){
 function updateCustomersHome(){
   try{
     const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
-    set('custTotalHome', custData.length.toLocaleString());
+    set('dsCustTotal', custData.length.toLocaleString());
     const mk=d=>(d?String(d).slice(0,7):'');
     const now=new Date(dhakaDateStr()+'T00:00:00');
     const thisK=dhakaDateStr().slice(0,7);
     const lm=new Date(now.getFullYear(),now.getMonth()-1,1);
     const lastK=lm.getFullYear()+'-'+String(lm.getMonth()+1).padStart(2,'0');
-    const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const mname=k=>MN[parseInt(k.slice(5,7),10)-1];
     const newThis=custData.filter(c=>mk(c.first_order)===thisK).length;
     const newLast=custData.filter(c=>mk(c.first_order)===lastK).length;
     let copy;
-    if(newThis===0 && newLast===0) copy='No new customers yet this month';
-    else if(newLast===0) copy=`${newThis} new in ${mname(thisK)} — your first this month`;
+    if(newThis===0 && newLast===0) copy='No new yet this month';
+    else if(newLast===0) copy=`+${newThis} new in ${mname(thisK)}`;
     else { const d=newThis-newLast, pct=Math.round(Math.abs(d)/newLast*100);
-      copy = d>0 ? `↑ ${newThis} new in ${mname(thisK)} — ${pct}% more than ${mname(lastK)} (${newLast})`
-           : d<0 ? `↓ ${newThis} new in ${mname(thisK)} — ${pct}% fewer than ${mname(lastK)} (${newLast})`
-           : `${newThis} new in ${mname(thisK)} — same as ${mname(lastK)}`;
+      copy = d>0 ? `↑ ${newThis} new · +${pct}% vs ${mname(lastK)}`
+           : d<0 ? `↓ ${newThis} new · −${pct}% vs ${mname(lastK)}`
+           : `${newThis} new · same as ${mname(lastK)}`;
     }
-    const el=document.getElementById('custGrowthCopy'); if(el) el.textContent=copy;
+    set('dsCustGrowth', copy);
   }catch(e){console.warn('customers home:',e);}
 }
 function updateCustSummary(){
