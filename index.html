@@ -299,6 +299,8 @@ body{background:radial-gradient(1100px 600px at 80% -10%,rgba(0,214,180,.10),tra
 .ro-note-input::placeholder{color:var(--tx-3)}
 .ro-note-save{flex-shrink:0;background:var(--accent);border:none;color:#fff;font-family:inherit;font-size:12px;font-weight:700;border-radius:9px;padding:8px 14px;cursor:pointer}
 .ro-done{font-size:12px;color:var(--tx-2);line-height:1.5}
+.ro-diag{background:rgba(255,200,61,.08);border:1px dashed rgba(255,200,61,.35);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:11px;line-height:1.6;color:var(--tx-2)}
+.ro-diag b{color:#ffce5a}
 .ro-card{padding:10px 12px}
 .ro-pr{flex-shrink:0;font-size:9.5px;font-weight:800;letter-spacing:.3px;padding:2px 8px;border-radius:20px}
 .ro-pr-HIGH{background:rgba(255,107,107,.16);color:#ff8a8a}
@@ -2662,6 +2664,10 @@ function renderReorder(){
   const box=document.getElementById('reorderBody'); if(!box) return;
   roBuildMap();
   const r=computeReorder(), m=r._m, custs=r._all;
+  // ---- TEMP DIAGNOSTIC: shows where the customer count comes from (remove later) ----
+  let _blank=0,_invalid=0; const _raw=new Set(),_valid=new Set();
+  for(const o of ordersData){ const rw=(o.phone||'').trim(); if(!rw){_blank++;continue;} _raw.add(rw); const nn=normPhone(o.phone); if(/^01[0-9]{9}$/.test(nn)) _valid.add(nn); else _invalid++; }
+  const diag=`<div class="ro-diag"><b>Diagnostic</b> — ${ordersData.length} orders loaded · ${_raw.size} distinct raw phones · <b>${_valid.size} valid customers</b> · ${_blank} blank-phone orders · ${_invalid} invalid-phone orders<br>repeat: ${m.repeatCount} of ${m.anyCount} (${m.convRate}%)</div>`;
   const tile=(label,val,cls)=>`<div class="ro-tile ${cls||''}"><div class="ro-tile-v">${val}</div><div class="ro-tile-l">${label}</div></div>`;
   const dash=`<div class="ro-dash">
       <div class="ro-dash-h">Today's mission</div>
@@ -2708,7 +2714,7 @@ function renderReorder(){
     <div class="ro-sec-sub">Everything to do today, highest priority first. Overdue and the day 7–8 window lead — that's where the next order is won. Each card shows the one next action.</div>
     ${listHtml}</div>`;
   const conv=r.converted.length?`<div class="ro-wins">🎉 <b>${r.converted.length}</b> reordered recently — ${r.converted.slice(0,8).map(c=>he(roFirstName(c.name))).join(', ')}</div>`:'';
-  box.innerHTML = dash + pipe + cohortStrip + taskSec + conv;
+  box.innerHTML = diag + dash + pipe + cohortStrip + taskSec + conv;
 }
 async function renderHome(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
