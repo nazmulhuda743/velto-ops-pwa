@@ -786,6 +786,11 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
           <span><b id="roLast">0</b> last call</span>
         </div>
       </button>
+      <button class="reorder-home" id="customersCard" onclick="navTo('s-customers')">
+        <div class="rh-top"><span class="rh-title">👥 Customers</span><span class="rh-go">→</span></div>
+        <div class="rh-stats" style="margin-top:2px"><span><b id="custTotalHome" style="font-size:22px">0</b> total customers</span></div>
+        <div class="rh-sub" id="custGrowthCopy">Loading growth…</div>
+      </button>
       <button class="fin-link" onclick="openScreen('s-deliveries','Deliveries')">🛵 Deliveries &amp; collections →</button>
       <div class="section-t">Today</div>
       <div class="stat-grid">
@@ -1281,6 +1286,7 @@ function unlockApp(p){
   loadOrders();
   loadCatalog();
   loadReorderActions();
+  loadCustomers();
   wirePickerEvents();
   loadNextId();
   navTo('s-home');
@@ -1397,7 +1403,7 @@ const CSTATUS={active:'Active',at_risk:'At-risk',churned:'Churned',prospect:'No 
 async function loadCustomers(){
   const list=document.getElementById('custList');
   // Instant render from cache so the customer list works offline.
-  if(!custData.length){ const c=lsGet('velto_customers'); if(c&&c.length){ custData=c; custPage=1; updateCustSummary(); renderCustomers(); } }
+  if(!custData.length){ const c=lsGet('velto_customers'); if(c&&c.length){ custData=c; custPage=1; updateCustSummary(); updateCustomersHome(); renderCustomers(); } }
   if(!sb) return;
   if(typeof navigator!=='undefined' && navigator.onLine===false){ return; }
   if(list && !custData.length) list.innerHTML='<div class="card" style="text-align:center;color:var(--tx-3);padding:24px">Loading customers…</div>';
@@ -1411,7 +1417,31 @@ async function loadCustomers(){
       from+=size; if(from>50000)break;
     }
   }catch(e){console.error('loadCustomers network (keeping cache):',e);return;}
-  if(ok){ custData=all; lsSet('velto_customers',all); custPage=1; updateCustSummary(); renderCustomers(); loadDupes(); }
+  if(ok){ custData=all; lsSet("velto_customers",all); custPage=1; updateCustSummary(); updateCustomersHome(); renderCustomers(); loadDupes(); }
+}
+function updateCustomersHome(){
+  try{
+    const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+    set('custTotalHome', custData.length.toLocaleString());
+    const mk=d=>(d?String(d).slice(0,7):'');
+    const now=new Date(dhakaDateStr()+'T00:00:00');
+    const thisK=dhakaDateStr().slice(0,7);
+    const lm=new Date(now.getFullYear(),now.getMonth()-1,1);
+    const lastK=lm.getFullYear()+'-'+String(lm.getMonth()+1).padStart(2,'0');
+    const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const mname=k=>MN[parseInt(k.slice(5,7),10)-1];
+    const newThis=custData.filter(c=>mk(c.first_order)===thisK).length;
+    const newLast=custData.filter(c=>mk(c.first_order)===lastK).length;
+    let copy;
+    if(newThis===0 && newLast===0) copy='No new customers yet this month';
+    else if(newLast===0) copy=`${newThis} new in ${mname(thisK)} — your first this month`;
+    else { const d=newThis-newLast, pct=Math.round(Math.abs(d)/newLast*100);
+      copy = d>0 ? `↑ ${newThis} new in ${mname(thisK)} — ${pct}% more than ${mname(lastK)} (${newLast})`
+           : d<0 ? `↓ ${newThis} new in ${mname(thisK)} — ${pct}% fewer than ${mname(lastK)} (${newLast})`
+           : `${newThis} new in ${mname(thisK)} — same as ${mname(lastK)}`;
+    }
+    const el=document.getElementById('custGrowthCopy'); if(el) el.textContent=copy;
+  }catch(e){console.warn('customers home:',e);}
 }
 function updateCustSummary(){
   const cnt=s=>custData.filter(c=>c.status===s).length;
@@ -1831,7 +1861,7 @@ async function saveOrder(){
     const sm=document.getElementById('succMsg');if(sm){sm.textContent='Order number assigned by the database';sm.style.color='';}
     if(photoFail)toast(photoFail+' photo(s) failed to upload — check the order-photos bucket/policy');
     // Notify every registered staff device (works even when their app is closed)
-    firePush({type:'INSERT',record:{order_number:order.order_number,name_snapshot:order.name_snapshot||newName||'walk-in',total_amount:total}});
+    firePush({type:'INSERT',record:{order_number:order.order_number,name_snapshot:custName,phone_snapshot:phone,total_amount:total}});
     // Remember the special instruction as a customer preference for their next order
     const _instr=(g('newInstr')||'').trim();
     if(_instr){ try{ await sb.from('customers').update({special_notes:_instr}).eq('phone',phone); }catch(noteErr){ console.warn('could not save customer note:',noteErr); } }
@@ -3116,7 +3146,7 @@ function subscribeOrders(){
     _ordersChannel = sb.channel('velto-orders-'+Date.now())
       .on('postgres_changes', {event:'INSERT', schema:'public', table:'orders'}, payload=>{
         const o = payload.new || {};
-        const name = o.name_snapshot || 'walk-in';
+        const name = displayName(o.name_snapshot || o.phone_snapshot || 'New customer');
         const amt  = Number(o.total_amount||0).toLocaleString();
         notify('new', 'New order placed', `${o.order_number||'?'} · ${name} · Tk ${amt}`, ()=>navTo('s-orders'));
       })
