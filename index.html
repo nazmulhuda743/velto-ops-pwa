@@ -1393,7 +1393,7 @@ function openScreen(id,title){
   document.querySelector('.scroll').scrollTop=0;
   if(id==='s-customers')loadCustomers();
   if(id==='s-deliveries')loadDeliveries();
-  if(id==='s-reorder'){ renderReorder(); loadReorderActions().then(()=>renderReorder()); }
+  if(id==='s-reorder'){ renderReorder(); loadReorderActions().then(()=>renderReorder()); if(!_dashboardData && typeof renderHomeStats==='function') renderHomeStats().then(()=>renderReorder()); }
 }
 
 // ===== Customers tab =====
@@ -2697,8 +2697,16 @@ function renderReorder(){
   // ---- TEMP DIAGNOSTIC: shows where the customer count comes from (remove later) ----
   let _blank=0,_invalid=0; const _raw=new Set(),_valid=new Set();
   for(const o of ordersData){ const rw=(o.phone||'').trim(); if(!rw){_blank++;continue;} _raw.add(rw); const nn=normPhone(o.phone); if(/^01[0-9]{9}$/.test(nn)) _valid.add(nn); else _invalid++; }
-  const diag=`<div class="ro-diag"><b>Diagnostic</b> — ${ordersData.length} orders loaded · ${_raw.size} distinct raw phones · <b>${_valid.size} valid customers</b> · ${_blank} blank-phone orders · ${_invalid} invalid-phone orders<br>repeat: ${m.repeatCount} of ${m.anyCount} (${m.convRate}%)</div>`;
+  const diag=`<div class="ro-diag"><b>Diagnostic</b> — this view loads ${ordersData.length} orders · ${_raw.size} raw phones · <b>${_valid.size} valid customers</b> · ${_blank} blank · ${_invalid} invalid<br>local estimate: ${m.repeatCount} of ${m.anyCount} (${m.convRate}%)<br><b>server (dashboard):</b> ${(_dashboardData&&_dashboardData.month)?`${_dashboardData.month.repeat_rate}% this month (${_dashboardData.month.repeat_count}/${_dashboardData.month.active_count} active) · all-time ${_dashboardData.repeat_rate_all_time}%`:'loading…'}</div>`;
   const tile=(label,val,cls)=>`<div class="ro-tile ${cls||''}"><div class="ro-tile-v">${val}</div><div class="ro-tile-l">${label}</div></div>`;
+  // Authoritative repeat rate from the server (same source as the BI dashboard). Falls back to local estimate if not loaded yet.
+  let convPct=m.convRate, convN=m.repeatCount, convD=m.anyCount, convTitle='First → second order', convTarget=60, convUnit='customers';
+  if(_dashboardData && _dashboardData.month && _dashboardData.month.active_count!=null){
+    convPct = Number(_dashboardData.month.repeat_rate)||0;
+    convN = _dashboardData.month.repeat_count; convD = _dashboardData.month.active_count;
+    convTarget = Number(_dashboardData.targets && _dashboardData.targets.repeat_rate_goal)||60;
+    convTitle = 'Repeat rate this month'; convUnit='active this month';
+  }
   const dash=`<div class="ro-dash">
       <div class="ro-dash-h">Today's mission</div>
       <div class="ro-tiles">
@@ -2708,9 +2716,9 @@ function renderReorder(){
         ${tile('Revenue waiting','৳'+m.revenueWaiting.toLocaleString(),'rev')}
       </div>
       <div class="ro-conv">
-        <div class="ro-conv-top"><span>First → second order</span><span class="ro-conv-now">${m.convRate}%</span></div>
-        <div class="ro-bar"><i style="width:${Math.min(100,Math.round(m.convRate/60*100))}%"></i></div>
-        <div class="ro-conv-sub">${m.repeatCount} repeat of ${m.anyCount} customers · target 60%</div>
+        <div class="ro-conv-top"><span>${convTitle}</span><span class="ro-conv-now">${convPct}%</span></div>
+        <div class="ro-bar"><i style="width:${Math.min(100,Math.round(convPct/(convTarget||60)*100))}%"></i></div>
+        <div class="ro-conv-sub">${convN} of ${convD} ${convUnit} · target ${convTarget}%</div>
       </div>
     </div>`;
   const stages=[['In progress',r.inflight.length],['Thank you',r.thank.length],['Day 7–8',r.nudge.length],['Standing',r.standing.length],['Converted',r.converted.length]];
