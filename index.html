@@ -301,6 +301,10 @@ body{background:radial-gradient(1100px 600px at 80% -10%,rgba(0,214,180,.10),tra
 .ro-done{font-size:12px;color:var(--tx-2);line-height:1.5}
 .ro-diag{background:rgba(255,200,61,.08);border:1px dashed rgba(255,200,61,.35);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:11px;line-height:1.6;color:var(--tx-2)}
 .ro-diag b{color:#ffce5a}
+.ro-hist{font-size:11px;color:var(--tx-3);background:rgba(255,255,255,.03);border-left:2px solid var(--line);padding:5px 9px;border-radius:0 7px 7px 0;margin-bottom:7px;line-height:1.5}
+.ro-hist b{color:var(--tx-2)}
+.ro-nba.escalate{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.32);border-radius:9px;padding:8px 10px;color:#ffb3b3}
+.ro-nba.escalate b{color:#ff8a8a}
 .ro-card{padding:10px 12px}
 .ro-pr{flex-shrink:0;font-size:9.5px;font-weight:800;letter-spacing:.3px;padding:2px 8px;border-radius:20px}
 .ro-pr-HIGH{background:rgba(255,107,107,.16);color:#ff8a8a}
@@ -1393,7 +1397,7 @@ function openScreen(id,title){
   document.querySelector('.scroll').scrollTop=0;
   if(id==='s-customers')loadCustomers();
   if(id==='s-deliveries')loadDeliveries();
-  if(id==='s-reorder'){ renderReorder(); loadReorderActions().then(()=>renderReorder()); if(!_dashboardData && typeof renderHomeStats==='function') renderHomeStats().then(()=>renderReorder()); }
+  if(id==='s-reorder'){ renderReorder(); loadReorderActions().then(()=>renderReorder()); if(!custData.length && typeof loadCustomers==='function'){ try{ const _p=loadCustomers(); if(_p&&_p.then) _p.then(()=>renderReorder()); }catch(e){} } if(!_dashboardData && typeof renderHomeStats==='function') renderHomeStats().then(()=>renderReorder()); }
 }
 
 // ===== Customers tab =====
@@ -2495,17 +2499,34 @@ function reorderMsg(kind, name, vip){
 }
 function roIntl(phone){ let d=(phone||'').replace(/\D/g,''); if(d.startsWith('0')) d=d.slice(1); if(!d.startsWith('880')) d='880'+d; return d; }
 function waOpen(phone, msg){ window.open(`https://wa.me/${roIntl(phone)}?text=${encodeURIComponent(msg)}`,'_blank'); }
-function roMessage(btn){ if(!btn)return; waOpen(btn.getAttribute('data-phone')||'', reorderMsg(btn.getAttribute('data-kind')||'nudge', btn.getAttribute('data-name')||'', btn.getAttribute('data-vip')==='1')); }
-function roCall(btn){ if(!btn)return; window.location.href='tel:+'+roIntl(btn.getAttribute('data-phone')||''); }
+function roMessage(btn){ if(!btn)return; waOpen(btn.getAttribute('data-phone')||'', reorderMsg(btn.getAttribute('data-kind')||'nudge', btn.getAttribute('data-name')||'', btn.getAttribute('data-vip')==='1')); toast('Log what happens below 👇 so the team knows'); }
+function roCall(btn){ if(!btn)return; window.location.href='tel:+'+roIntl(btn.getAttribute('data-phone')||''); toast('Log the call outcome below 👇'); }
 // Google review link — REPLACE with Velto's real review link (ask Nazmul for it)
 const GOOGLE_REVIEW_URL='https://g.page/r/REPLACE_WITH_VELTO_GOOGLE_REVIEW_LINK/review';
 function reviewMsg(name){ const n=roFirstName(name); return `That genuinely made our day, ${n}! 🙏 If you have a moment, a quick Google review would mean the world to us — and it helps other people in Uttara discover Velto. It takes just a few seconds:\n${GOOGLE_REVIEW_URL}\nThank you for being part of Velto.`; }
 function roReview(btn){ if(!btn)return; waOpen(btn.getAttribute('data-phone')||'', reviewMsg(btn.getAttribute('data-name')||'')); }
 // Outcome / completed tracking (per-device for now; shared table is the next step)
 // ---- Shared follow-up log (reorder_actions table) so the whole team sees outcomes ----
+let _roChannel=null;
+function subscribeReorderActions(){
+  if(!sb || _roChannel) return;
+  try{
+    const refresh=()=>{ roBuildMap(); if(document.getElementById('s-reorder')&&document.getElementById('s-reorder').classList.contains('active')) renderReorder(); updateReorderHome(); };
+    _roChannel = sb.channel('velto-reorder-actions-'+Date.now())
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'reorder_actions'},payload=>{
+        const a=payload.new; if(!a||!a.id) return;
+        if(!roActions.some(x=>x.id===a.id)){ roActions.unshift(a); lsSet('velto_reorder_actions',roActions); refresh(); }
+      })
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'reorder_actions'},payload=>{
+        const old=payload.old; if(!old||!old.id) return;
+        roActions=roActions.filter(x=>x.id!==old.id); lsSet('velto_reorder_actions',roActions); refresh();
+      })
+      .subscribe();
+  }catch(e){console.warn('reorder realtime:',e);}
+}
 let roActions = lsGet('velto_reorder_actions') || [];
 let _roMap = {};
-function roBuildMap(){ const m={}; for(const a of roActions){ const k=a.customer_phone+'|'+a.stage; if(!m[k] || new Date(a.created_at)>new Date(m[k].created_at)) m[k]=a; } _roMap=m; }
+function roBuildMap(){ const m={}; for(const a of roActions){ const k=a.customer_phone; if(!m[k] || new Date(a.created_at)>new Date(m[k].created_at)) m[k]=a; } _roMap=m; }
 async function loadReorderActions(){
   if(!sb || (typeof navigator!=='undefined' && navigator.onLine===false)){ roBuildMap(); return; }
   try{
@@ -2515,8 +2536,9 @@ async function loadReorderActions(){
   }catch(e){ console.warn('load reorder actions:',e); }
   roBuildMap();
 }
-function roDoneInfo(phone,stage){ return _roMap[phone+'|'+stage]||null; }
-function roCompletedToday(){ const t=dhakaDateStr(); const seen={}; let n=0; for(const a of roActions){ if(dhakaDateStr(a.created_at)===t){ const k=a.customer_phone+'|'+a.stage; if(!seen[k]){seen[k]=1;n++;} } } return n; }
+const RO_COOLDOWN_DAYS=3;   // after a contact, a customer is "handled" for this many days, then re-enters the list
+function roDoneInfo(phone){ const a=_roMap[phone]; if(!a) return null; const days=Math.floor((Date.now()-new Date(a.created_at))/86400000); if(days>=RO_COOLDOWN_DAYS) return null; return Object.assign({_cooldownLeft:Math.max(1,RO_COOLDOWN_DAYS-days)}, a); }
+function roCompletedToday(){ const t=dhakaDateStr(); const seen={}; let n=0; for(const a of roActions){ if(dhakaDateStr(a.created_at)===t){ if(!seen[a.customer_phone]){seen[a.customer_phone]=1;n++;} } } return n; }
 async function roLog(phone,stage,outcome,note,orderNum){
   const rec={customer_phone:phone,order_number:orderNum||null,stage,outcome:outcome||'Logged',note:note||null,created_by:(currentUser?currentUser.id:null),created_by_name:currentName||'Staff',created_at:new Date().toISOString()};
   roActions.unshift(rec); lsSet('velto_reorder_actions',roActions); roBuildMap();   // optimistic
@@ -2554,6 +2576,20 @@ function celebrate(name, amount){
   }catch(e){}
 }
 function roNBA(c){
+  const hist=c.history||[];
+  const noResp=hist.filter(a=>a.outcome==='No response').length;
+  const complaint=hist.some(a=>a.outcome==='Complaint');
+  const wantsReminder=hist.length && hist[0].outcome==='Wants reminder';
+  const notInterested=hist.some(a=>a.outcome==='Not interested');
+  const wrongNumber=hist.length && hist[0].outcome==='Wrong number';
+  // --- History overrides the stage default: logged outcomes become the next decision ---
+  if(wrongNumber) return {action:'Wait',reason:'Last logged as wrong number — verify the contact before trying again.',escalate:false};
+  if(complaint) return {action:'Call',reason:'A complaint was logged earlier — call to put it right before pitching anything.',escalate:true};
+  if(noResp>=2) return {action:'Call',reason:`Seen ${noResp} messages, no reply — stop texting. Call to check the last order was fine and personally invite them back.`,escalate:true};
+  if(notInterested) return {action:'Call',reason:'Said not interested before — one warm call to understand why beats another ignored text.',escalate:true};
+  if(noResp===1) return {action:'WhatsApp',reason:'One message went unanswered — send one more friendly note. If still silent, it becomes a call.',success:55};
+  if(wantsReminder) return {action:'WhatsApp',reason:'They asked to be reminded — follow through on exactly that, today.',success:72};
+  // --- Stage defaults ---
   if(c.stage==='thank') return {action:'WhatsApp',reason:'Thank them within 48h — the first impression drives the second order.',success:70};
   if(c.stage==='nudge') return c.priority==='HIGH'
     ? {action:'Call',reason:'High-value first order, in the day-7 reorder window — worth a personal call.',success:75}
@@ -2598,6 +2634,7 @@ function roBuildCustomers(){
     }
     c.priority=(c.value>=1500||c.ltv>=3000||c.stage==='overdue')?'HIGH':(c.value<400?'LOW':'NORMAL');
     c.potential=c.repeat?c.avg:c.value;
+    c.history=roActions.filter(a=>a.customer_phone===ph).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
     c.nba=roNBA(c);
     custs.push(c);
   }
@@ -2668,11 +2705,13 @@ function roCard(c){
     const who=done.created_by_name?(' · '+he(done.created_by_name)):'';
     const when=' · '+(dhakaDateStr(done.created_at)===dhakaDateStr()?'today':relDate(done.created_at));
     const noteHtml=(done.note && done.note!==done.outcome)?(' — “'+he(done.note)+'”'):'';
-    body=`<div class="ro-done">✓ ${he(done.outcome)}${noteHtml}${who}${when} <button class="ro-undo" data-phone="${he(c.phone)}" data-stage="${stage}" onclick="roUndo(this)">undo</button></div>`;
+    body=`<div class="ro-done">✓ ${he(done.outcome)}${noteHtml}${who}${when} · back in ${done._cooldownLeft}d <button class="ro-undo" data-phone="${he(c.phone)}" data-stage="${stage}" onclick="roUndo(this)">undo</button></div>`;
   } else {
     const d=`data-name="${he(c.name)}" data-phone="${he(c.phone)}" data-kind="${stage}" data-vip="${c.priority==='HIGH'?1:0}"`;
     const reviewBtn = stage==='thank'?`<button class="ro-b ro-b-review" data-name="${he(c.name)}" data-phone="${he(c.phone)}" onclick="roReview(this)" title="Send when they reply 5★">5★ Review</button>`:'';
-    body=`<div class="ro-nba">🧠 <b>${c.nba.action}</b> — ${he(c.nba.reason)}${c.nba.success?` <span class="ro-est">est ${c.nba.success}%</span>`:''}</div>
+    const _h=c.history||[];
+    const _histLine = _h.length ? `<div class="ro-hist">📋 ${_h.length} prior follow-up${_h.length>1?'s':''} · last: <b>${he(_h[0].outcome)}</b>${_h[0].note?` — “${he(_h[0].note)}”`:''} · ${relDate(_h[0].created_at)}${_h[0].created_by_name?' · '+he(_h[0].created_by_name):''}</div>` : '';
+    body=`${_histLine}<div class="ro-nba${c.nba.escalate?' escalate':''}">${c.nba.escalate?'⚠️':'🧠'} <b>${c.nba.action}</b> — ${he(c.nba.reason)}${c.nba.success?` <span class="ro-est">est ${c.nba.success}%</span>`:''}</div>
       <div class="ro-act">
         <button class="ro-b ro-b-wa" ${d} onclick="roMessage(this)">WhatsApp</button>
         <button class="ro-b ro-b-call" data-phone="${he(c.phone)}" onclick="roCall(this)">Call</button>
@@ -2694,19 +2733,21 @@ function renderReorder(){
   const box=document.getElementById('reorderBody'); if(!box) return;
   roBuildMap();
   const r=computeReorder(), m=r._m, custs=r._all;
+  // Repeat rate from customer_stats — the SAME source as the BI dashboard (orders linked by customer_id across all customers).
+  let convPct=m.convRate, convN=m.repeatCount, convD=m.anyCount, convTitle='First → second order', convTarget=60, convUnit='customers';
+  const _ordered = custData.filter(c=>(c.order_count||0)>=1);
+  if(_ordered.length){
+    convN = _ordered.filter(c=>(c.order_count||0)>=2).length;
+    convD = _ordered.length;
+    convPct = Math.round(convN/convD*1000)/10;
+    convTitle='Repeat customers'; convUnit='have reordered';
+    if(_dashboardData && _dashboardData.targets && _dashboardData.targets.repeat_rate_goal) convTarget=Number(_dashboardData.targets.repeat_rate_goal)||60;
+  }
   // ---- TEMP DIAGNOSTIC: shows where the customer count comes from (remove later) ----
   let _blank=0,_invalid=0; const _raw=new Set(),_valid=new Set();
   for(const o of ordersData){ const rw=(o.phone||'').trim(); if(!rw){_blank++;continue;} _raw.add(rw); const nn=normPhone(o.phone); if(/^01[0-9]{9}$/.test(nn)) _valid.add(nn); else _invalid++; }
-  const diag=`<div class="ro-diag"><b>Diagnostic</b> — this view loads ${ordersData.length} orders · ${_raw.size} raw phones · <b>${_valid.size} valid customers</b> · ${_blank} blank · ${_invalid} invalid<br>local estimate: ${m.repeatCount} of ${m.anyCount} (${m.convRate}%)<br><b>server (dashboard):</b> ${(_dashboardData&&_dashboardData.month)?`${_dashboardData.month.repeat_rate}% this month (${_dashboardData.month.repeat_count}/${_dashboardData.month.active_count} active) · all-time ${_dashboardData.repeat_rate_all_time}%`:'loading…'}</div>`;
+  const diag=`<div class="ro-diag"><b>Diagnostic</b> — orders loaded ${ordersData.length} · customers seen by phone (local) ${_valid.size}<br>customer_stats: <b>${custData.length} customers</b> · ${custData.filter(c=>(c.order_count||0)>=2).length} with 2+ orders · ${custData.filter(c=>(c.order_count||0)>=1).length} with ≥1 order<br>local repeat ${m.convRate}% · <b>authoritative repeat ${convPct}%</b></div>`;
   const tile=(label,val,cls)=>`<div class="ro-tile ${cls||''}"><div class="ro-tile-v">${val}</div><div class="ro-tile-l">${label}</div></div>`;
-  // Authoritative repeat rate from the server (same source as the BI dashboard). Falls back to local estimate if not loaded yet.
-  let convPct=m.convRate, convN=m.repeatCount, convD=m.anyCount, convTitle='First → second order', convTarget=60, convUnit='customers';
-  if(_dashboardData && _dashboardData.month && _dashboardData.month.active_count!=null){
-    convPct = Number(_dashboardData.month.repeat_rate)||0;
-    convN = _dashboardData.month.repeat_count; convD = _dashboardData.month.active_count;
-    convTarget = Number(_dashboardData.targets && _dashboardData.targets.repeat_rate_goal)||60;
-    convTitle = 'Repeat rate this month'; convUnit='active this month';
-  }
   const dash=`<div class="ro-dash">
       <div class="ro-dash-h">Today's mission</div>
       <div class="ro-tiles">
@@ -3184,6 +3225,7 @@ function unsubscribeOrders(){
 function bootNotifications(){
   loadNotifPrefs();
   subscribeOrders();
+  subscribeReorderActions();
   if(_notifPrefs.browser && ('Notification' in window) && Notification.permission==='granted'){ enablePush(); }
   if(!window._notifVisHookAttached){
     document.addEventListener('visibilitychange', ()=>{
