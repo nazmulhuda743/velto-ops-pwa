@@ -1937,8 +1937,25 @@ async function saveOrder(){
   }finally{ if(btn){btn.disabled=false;btn.textContent=old;} }
 }
 function showInvoice(){renderInvoice(lastSaved);document.getElementById('invoiceModal').classList.add('show');try{history.pushState({v:'invoice'},'');}catch(e){}}
-function closeInvoice(){document.getElementById('invoiceModal').classList.remove('show');}
+function closeInvoice(){document.getElementById('invoiceModal').classList.remove('show');_washMode=false;}
 async function sendInvoice(){
+  if(_washMode && currentWashBill){
+    const bill=currentWashBill;
+    const total=(bill.items||[]).reduce((s,i)=>s+(Number(i.amount)||0),0);
+    const msg='*VELTO — Wash Plant Bill*\n'+(fullDate(bill.bill_date)||'')+'\nItems: '+(bill.items||[]).reduce((s,i)=>s+(Number(i.qty)||0),0)+'\nTotal: Tk. '+total+(bill.status==='approved'?'\nStatus: Approved':'\nStatus: Draft');
+    const btn=document.querySelector('#invoiceModal .iv-wa');const oldt=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent='Preparing…';}
+    try{
+      const okp=await loadJsPDF();
+      if(okp&&window.jspdf&&window.jspdf.jsPDF&&navigator.canShare&&navigator.share){
+        const pdf=buildWashPdf(bill); const blob=pdf.output('blob');
+        const file=new File([blob],'Velto-WashBill-'+(bill.bill_date||'')+'.pdf',{type:'application/pdf'});
+        if(navigator.canShare({files:[file]})){ await navigator.share({title:'Velto Wash Plant Bill',text:msg,files:[file]}); return; }
+      }
+      toast('Tap Save PDF, then attach it in WhatsApp');
+    }catch(e){ if(e&&e.name==='AbortError')return; console.warn('wash share',e); toast('Tap Save PDF to share the bill'); }
+    finally{if(btn){btn.disabled=false;btn.textContent=oldt;}}
+    return;
+  }
   const s=currentInvoice||lastSaved;
   if(!s){toast('No invoice to send');return;}
   if(!document.getElementById('invoiceModal').classList.contains('show')){toast('Open an invoice first');return;}
@@ -2120,13 +2137,13 @@ async function _captureInvoicePdf(s){
 }
 async function savePdf(){
   if(!document.getElementById('invoiceModal').classList.contains('show')){toast('Open an invoice first');return;}
-  const s=currentInvoice;
-  if(!s){toast('Nothing to save');return;}
   const btn=document.querySelector('#invoiceModal .iv-dl');const oldt=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent='Generating…';}
   toast('Generating PDF…');
   try{
     const okp=await loadJsPDF();
     if(!okp||!(window.jspdf&&window.jspdf.jsPDF)){toast('Could not load PDF tool — check your connection');return;}
+    if(_washMode && currentWashBill){ const pdf=buildWashPdf(currentWashBill); pdf.save('Velto-WashBill-'+(currentWashBill.bill_date||'')+'.pdf'); toast('PDF saved'); return; }
+    const s=currentInvoice; if(!s){toast('Nothing to save');return;}
     const pdf=buildInvoicePdf(s);
     pdf.save('Velto-'+(s.id||'invoice')+'.pdf');
     toast('PDF saved');
@@ -2678,7 +2695,7 @@ function renderWashBill(){
   const totals=`<div class="wa-totals"><div class="wa-tline"><span>Items</span><b id="waCount">${washQtyTotal()}</b></div><div class="wa-tline wa-grand"><span>Total payable to plant</span><b id="waTotal">৳${washTotal().toLocaleString()}</b></div></div>`;
   const summary=`<div class="wa-sum-wrap"><div class="wa-sum-t">Receiving summary (for counting on return)</div><div class="wa-sum" id="waSummary">${washSummaryHtml()}</div></div>`;
   const cta = approved
-    ? `<div class="wa-cta"><button class="wa-btn wa-print" onclick="washPrintInvoice()">📄 Print / Save PDF</button><button class="wa-btn wa-ghost" onclick="washStartNext()">Start next bill</button></div>`
+    ? `<div class="wa-cta"><button class="wa-btn wa-print" onclick="washShowInvoice()">📄 View invoice</button><button class="wa-btn wa-ghost" onclick="washStartNext()">Start next bill</button></div>`
     : `<div class="wa-cta"><button class="wa-btn wa-approve" onclick="washApprove()">✓ Approve & lock for plant</button><button class="wa-btn wa-ghost" onclick="washPrintInvoice()">👁 Preview</button><button class="wa-btn wa-ghost" onclick="washOpenHistory()">Past bills</button></div>`;
   box.innerHTML = head + note + table + custom + summary + totals + cta + `<div id="waHistory"></div>`;
 }
@@ -2696,22 +2713,106 @@ function washOpenHistory(){
   }
   box.innerHTML=html;
 }
-function washPrintInvoice(){
-  if(!washBill) return;
-  const rows=washBill.items.slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
-  const m=washSummary();
-  const rh=rows.map(it=>`<tr><td>${he(it.is_custom?'custom':washOrderNo(it.order_number))}</td><td>${he(it.item_name)}${it.is_rewash?' (rewash)':''}</td><td style="text-align:center">${it.qty}</td><td style="text-align:right">${(it.is_rewash?0:it.unit_price)}</td><td style="text-align:right">${Number(it.amount)||0}</td></tr>`).join('');
-  const sh=Object.keys(m).sort().map(k=>`${he(k)}: ${m[k]}`).join(' &nbsp;·&nbsp; ');
-  const html=`<!doctype html><html><head><meta charset="utf-8"><title>Velto Wash Plant Bill ${he(washBill.bill_date)}</title>
-  <style>body{font-family:Arial,Helvetica,sans-serif;color:#111;padding:24px;max-width:720px;margin:auto}h1{font-size:20px;margin:0}.sub{color:#555;font-size:12px;margin:2px 0 16px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid #ddd;padding:6px 8px;text-align:left}th{background:#f4f4f4}tfoot td{font-weight:bold;border-top:2px solid #333}.sum{margin-top:14px;font-size:12px;background:#f7f7f7;padding:10px 12px;border-radius:6px}.appr{margin-top:18px;font-size:12px;color:#333}</style></head>
-  <body><h1>Velto — Wash Plant Bill</h1><div class="sub">${fullDate(washBill.bill_date)} · ${washBill.status==='approved'?'APPROVED':'DRAFT'} · House 2 Road 14 Sector 11 Uttara, Dhaka · 01605-162788</div>
-  <table><thead><tr><th>Order</th><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit ৳</th><th style="text-align:right">Amount ৳</th></tr></thead>
-  <tbody>${rh}</tbody>
-  <tfoot><tr><td colspan="2">Total</td><td style="text-align:center">${washQtyTotal()}</td><td></td><td style="text-align:right">৳${washTotal().toLocaleString()}</td></tr></tfoot></table>
-  <div class="sum"><b>Receiving summary:</b> ${sh||'—'}</div>
-  ${washBill.approved_at?`<div class="appr">Approved by ${he(washBill.approved_by_name||'Staff')} on ${fullDate(washBill.approved_at)}</div>`:''}
-  </body></html>`;
-  try{ const w=window.open('','_blank'); if(w){ w.document.write(html); w.document.close(); w.focus(); setTimeout(()=>{try{w.print();}catch(e){}},350); } else { toast('Allow pop-ups to print/save the PDF'); } }catch(e){ toast('Could not open print view'); }
+function washSummaryOf(items){ const m={}; for(const i of (items||[])){ const t=washItemType(i.item_name); m[t]=(m[t]||0)+(Number(i.qty)||0); } return m; }
+let _washMode=false, currentWashBill=null;
+function washPrintInvoice(){ washShowInvoice(); }   // back-compat
+function washShowInvoice(){
+  washEnsureBill();
+  currentWashBill=JSON.parse(JSON.stringify(washBill)); _washMode=true; currentInvoice=null;
+  document.getElementById('invBody').innerHTML=washInvoiceSheet(currentWashBill);
+  const m=document.getElementById('invoiceModal'); if(m){ m.classList.add('show'); try{history.pushState({v:'invoice'},'');}catch(e){} }
+}
+function washInvoiceSheet(bill){
+  const items=(bill.items||[]).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
+  const qty=items.reduce((s,i)=>s+(Number(i.qty)||0),0);
+  const total=items.reduce((s,i)=>s+(Number(i.amount)||0),0);
+  const approved=bill.status==='approved';
+  const pill = approved
+    ? `<div class="r-pill" style="color:#1f8a5b;background:rgba(31,138,91,.12);border:1px solid rgba(31,138,91,.4)"><span class="dot"></span> Approved</div>`
+    : `<div class="r-pill" style="color:#b8860b;background:rgba(214,158,46,.12);border:1px solid rgba(214,158,46,.4)"><span class="dot"></span> Draft</div>`;
+  const rows = items.length ? items.map(i=>`<div class="r-row"><div class="nm">${he(i.item_name)}${i.is_rewash?' <span style="color:#1f8a5b;font-size:11px">(rewash)</span>':''}<div style="font-size:11px;color:#5b2be0;font-family:monospace;margin-top:2px">${he(i.is_custom?'CUSTOM':washOrderNo(i.order_number))}</div></div><div class="qty">\u00D7 ${i.qty}</div><div class="price"><span class="cur">\u09F3</span>${(Number(i.amount)||0).toLocaleString()}</div></div>`).join('') : '<div style="padding:18px 0;color:#9AA1B2;font-size:13px;text-align:center">No items</div>';
+  const sm=washSummaryOf(items); const sline=Object.keys(sm).sort().map(k=>`<span style="display:inline-block;background:#f1f1ee;border:1px solid #e6e7ec;border-radius:6px;padding:3px 9px;margin:0 6px 6px 0;font-size:12px">${he(k)}: <b>${sm[k]}</b></span>`).join('')||'—';
+  return `<article class="sheet">
+    <div class="r-wm" aria-hidden="true">V</div>
+    <header class="r-head"><div class="r-headrow">
+      <div><div class="r-name">VELTO</div><div class="r-tag">Premium Laundry &amp; Dry Cleaning</div></div>
+      <div class="r-meta-r"><div class="r-eyebrow">Wash Plant Bill</div><div class="r-no">${he(fullDate(bill.bill_date))}</div>${pill}</div>
+    </div></header>
+    <section class="r-metastrip">
+      <div><div class="r-mk">Issued</div><div class="r-mv">${he(fullDate(bill.bill_date))}</div></div>
+      <div><div class="r-mk">To</div><div class="r-mv">Washing Plant</div></div>
+      <div><div class="r-mk">Items</div><div class="r-mv mono">${qty}</div></div>
+    </section>
+    <section class="r-body">
+      <div class="r-ihead"><div>Item &amp; Order</div><div class="r">Qty</div><div class="r">Amount</div></div>
+      ${rows}
+      <div class="r-totals">
+        <div class="r-stampwrap"></div>
+        <div class="r-totcard">
+          <div class="r-tr"><div class="k">Items</div><div class="v">${qty}</div></div>
+          <div class="r-tr total"><div class="k">Total payable</div><div class="v">\u09F3 ${total.toLocaleString()}</div></div>
+        </div>
+      </div>
+      <div style="margin-top:16px"><div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6B7280;margin-bottom:8px">Receiving summary (count on return)</div>${sline}</div>
+    </section>
+    <section class="r-foot"><div class="r-thanks">Velto &times; Washing Plant</div>
+      <div class="r-subthanks">${approved?('Approved by '+he(bill.approved_by_name||'Staff')+' \u00B7 '+he(fullDate(bill.approved_at))):'Draft \u2014 not yet approved.'}<br/>House 2 Road 14 Sector 11 Uttara, Dhaka \u00B7 01605-162788</div></section>
+  </article>`;
+}
+function buildWashPdf(bill){
+  const {jsPDF}=window.jspdf; const doc=new jsPDF({unit:'pt',format:'a4'});
+  const PW=595.28,PH=841.89,PADX=44,CW=PW-2*PADX;
+  const navy=[11,16,32],white=[255,255,255],muted=[107,114,128],muted2=[154,161,178],line=[230,231,236],paper=[250,250,247],ink2=[19,26,51],violet=[91,43,224],green=[31,138,91],amber=[184,134,11],cyan=[24,214,240];
+  const money=n=>Number(n||0).toLocaleString('en-US');
+  const items=(bill.items||[]).slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
+  const qtyN=items.reduce((s,i)=>s+(Number(i.qty)||0),0);
+  const total=items.reduce((s,i)=>s+(Number(i.amount)||0),0);
+  const approved=bill.status==='approved';
+  doc.setFillColor(...paper);doc.rect(0,0,PW,PH,'F');
+  const headH=118; doc.setFillColor(...navy);doc.rect(0,0,PW,headH,'F');
+  try{doc.saveGraphicsState();doc.rect(0,0,PW,headH,null);doc.clip();doc.discardPath();_glow(doc,PW-70,6,98,violet,1.0);_glow(doc,18,headH+2,82,cyan,0.55);doc.restoreGraphicsState();}catch(e){try{doc.restoreGraphicsState();}catch(_){}}
+  _gradBar(doc,0,headH-4,PW,4);
+  doc.setTextColor(...white);doc.setFont('helvetica','bold');doc.setFontSize(30);doc.text('VELTO',PADX,54);
+  doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(142,151,184);doc.text('PREMIUM LAUNDRY & DRY CLEANING',PADX,70,{charSpace:1.6});
+  doc.setFontSize(8);doc.setTextColor(142,151,184);doc.text('WASH PLANT BILL',PW-PADX,46,{align:'right',charSpace:1.8});
+  doc.setFont('courier','normal');doc.setFontSize(13);doc.setTextColor(...white);doc.text(String(fullDate(bill.bill_date)||''),PW-PADX,68,{align:'right'});
+  const pillTxt=approved?'APPROVED':'DRAFT', pillRGB=approved?green:amber;
+  doc.setFont('helvetica','bold');doc.setFontSize(8);const pwid=doc.getTextWidth(pillTxt)+(pillTxt.length-1)+26;const px=PW-PADX-pwid;
+  doc.setDrawColor(...pillRGB);doc.setLineWidth(1);doc.roundedRect(px,78,pwid,17,8.5,8.5,'S');doc.setTextColor(...pillRGB);doc.text(pillTxt,px+11,89.5,{charSpace:1});
+  doc.setFillColor(...white);doc.rect(0,headH,PW,52,'F');doc.setDrawColor(...line);doc.setLineWidth(0.8);doc.line(0,headH+52,PW,headH+52);
+  const colX=[PADX,PADX+CW/3,PADX+2*CW/3];
+  doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(...muted2);
+  doc.text('ISSUED',colX[0],headH+22,{charSpace:1.2});doc.text('TO',colX[1],headH+22,{charSpace:1.2});doc.text('ITEMS',colX[2],headH+22,{charSpace:1.2});
+  doc.setFontSize(11);doc.setTextColor(...navy);doc.text(String(fullDate(bill.bill_date)||''),colX[0],headH+40);
+  doc.text('Washing Plant',colX[1],headH+40);
+  doc.setFont('courier','normal');doc.text(String(qtyN),colX[2],headH+40);
+  let y=headH+52+34;
+  doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(...muted);
+  doc.text('ORDER \u00B7 ITEM',PADX,y,{charSpace:1.2});doc.text('QTY',PW-PADX-150,y,{align:'right',charSpace:1.2});doc.text('UNIT',PW-PADX-78,y,{align:'right',charSpace:1.2});doc.text('AMOUNT',PW-PADX,y,{align:'right',charSpace:1.2});
+  y+=8;doc.setDrawColor(...navy);doc.setLineWidth(1);doc.line(PADX,y,PW-PADX,y);y+=20;
+  const guard=()=>{if(y>720){doc.addPage();doc.setFillColor(...paper);doc.rect(0,0,PW,PH,'F');y=56;}};
+  items.forEach(it=>{ guard();
+    doc.setFont('helvetica','normal');doc.setFontSize(11.5);doc.setTextColor(...navy);doc.text(String(it.item_name||'')+(it.is_rewash?'  (rewash)':''),PADX,y);
+    doc.setFont('courier','normal');doc.setFontSize(8);doc.setTextColor(...violet);doc.text(it.is_custom?'CUSTOM':String(washOrderNo(it.order_number)),PADX,y+11);
+    doc.setFont('courier','normal');doc.setFontSize(10);doc.setTextColor(...muted);doc.text('x '+(it.qty||0),PW-PADX-150,y,{align:'right'});
+    doc.text(it.is_rewash?'0':String(it.unit_price||0),PW-PADX-78,y,{align:'right'});
+    doc.setFontSize(11);doc.setTextColor(...navy);doc.text('Tk '+money(it.amount),PW-PADX,y,{align:'right'});
+    y+=9;doc.setDrawColor(...line);doc.setLineWidth(0.5);doc.setLineDashPattern([1,1.6],0);doc.line(PADX,y,PW-PADX,y);doc.setLineDashPattern([],0);y+=17;
+  });
+  guard(); const totY=y+8, tcW=250,tcX=PW-PADX-tcW,tcH=72;
+  doc.setFillColor(...navy);doc.roundedRect(tcX,totY,tcW,tcH,10,10,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(142,151,184);doc.text('TOTAL PAYABLE TO PLANT',tcX+18,totY+25,{charSpace:1.2});
+  doc.setFontSize(26);doc.setTextColor(...white);doc.text('Tk '+money(total),tcX+18,totY+56);
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...navy);doc.text('RECEIVING SUMMARY',PADX,totY+18,{charSpace:.6});
+  doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(...ink2);
+  const sm=washSummaryOf(items); const sline=Object.keys(sm).sort().map(k=>k+': '+sm[k]).join('   \u00B7   ');
+  let sy=totY+36; doc.splitTextToSize(sline||'\u2014',tcX-PADX-20).forEach(t=>{doc.text(t,PADX,sy);sy+=14;});
+  y=totY+tcH+26;
+  if(approved){ doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(...muted);doc.text('Approved by '+(bill.approved_by_name||'Staff')+' on '+fullDate(bill.approved_at),PADX,y);y+=18; }
+  const lbY=Math.max(y+6,PH-32);doc.setFillColor(...navy);doc.rect(0,lbY,PW,32,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...white);doc.text('VELTO  \u00B7  DHAKA',PADX,lbY+20,{charSpace:1});
+  doc.setFont('courier','normal');doc.setFontSize(8.5);doc.setTextColor(142,151,184);doc.text('Wash bill \u00B7 '+(fullDate(bill.bill_date)||''),PW-PADX,lbY+20,{align:'right'});
+  return doc;
 }
 function updateWashHome(){ try{ washEnsureBill(); const dot=document.getElementById('washDueDot'); if(dot) dot.style.display=(washBill.status!=='approved'&&washBill.items.length)?'inline-block':'none'; }catch(e){} }
 
