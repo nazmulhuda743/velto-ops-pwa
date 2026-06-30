@@ -2848,7 +2848,7 @@ function washInvoiceSheet(bill){
     </div></header>
     <section class="r-metastrip">
       <div><div class="r-mk">Issued</div><div class="r-mv">${he(fullDate(bill.bill_date))}</div></div>
-      <div><div class="r-mk">Received by</div><div class="r-mv">${he(WASH_RECEIVER)}</div></div>
+      <div><div class="r-mk">To</div><div class="r-mv">${he(WASH_RECEIVER)}</div></div>
       <div><div class="r-mk">Items</div><div class="r-mv mono">${qty}</div></div>
     </section>
     <section class="r-body">
@@ -2862,10 +2862,6 @@ function washInvoiceSheet(bill){
         </div>
       </div>
       <div style="margin-top:16px"><div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6B7280;margin-bottom:8px">Receiving summary (count on return)</div>${sline}</div>
-    </section>
-    <section class="r-handover">
-      <div class="r-ho"><div class="r-ho-k">Received by</div><div class="r-ho-v">${he(WASH_RECEIVER)}</div><div class="r-ho-sig">Signature</div></div>
-      <div class="r-ho r-ho-r"><div class="r-ho-k">Handed over by</div><div class="r-ho-v">${he((bill.status==='approved'&&bill.approved_by_name)||'Velto')}</div><div class="r-ho-sig">${bill.status==='approved'?he(fullDate(bill.approved_at)):'Signature'}</div></div>
     </section>
     <section class="r-terms">
       <div class="r-terms-h">Terms &amp; Conditions</div>
@@ -2899,7 +2895,7 @@ function buildWashPdf(bill){
   doc.setFillColor(...white);doc.rect(0,headH,PW,52,'F');doc.setDrawColor(...line);doc.setLineWidth(0.8);doc.line(0,headH+52,PW,headH+52);
   const colX=[PADX,PADX+CW/3,PADX+2*CW/3];
   doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(...muted2);
-  doc.text('ISSUED',colX[0],headH+22,{charSpace:1.2});doc.text('RECEIVED BY',colX[1],headH+22,{charSpace:1.2});doc.text('ITEMS',colX[2],headH+22,{charSpace:1.2});
+  doc.text('ISSUED',colX[0],headH+22,{charSpace:1.2});doc.text('TO',colX[1],headH+22,{charSpace:1.2});doc.text('ITEMS',colX[2],headH+22,{charSpace:1.2});
   doc.setFontSize(11);doc.setTextColor(...navy);doc.text(String(fullDate(bill.bill_date)||''),colX[0],headH+40);
   doc.text(WASH_RECEIVER,colX[1],headH+40);
   doc.setFont('courier','normal');doc.text(String(qtyN),colX[2],headH+40);
@@ -2925,15 +2921,6 @@ function buildWashPdf(bill){
   const sm=washSummaryOf(items); const sline=Object.keys(sm).sort().map(k=>k+': '+sm[k]).join('   \u00B7   ');
   let sy=totY+36; doc.splitTextToSize(sline||'\u2014',tcX-PADX-20).forEach(t=>{doc.text(t,PADX,sy);sy+=14;});
   y=totY+tcH+30;
-  // --- Handover signatures ---
-  guard();
-  const halfW=(CW-24)/2, c2X=PADX+halfW+24;
-  doc.setDrawColor(...navy);doc.setLineWidth(0.8);doc.line(PADX,y,PADX+halfW,y);doc.line(c2X,y,c2X+halfW,y);
-  doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(...muted2);
-  doc.text('RECEIVED BY',PADX,y+13,{charSpace:.8});doc.text('HANDED OVER BY',c2X,y+13,{charSpace:.8});
-  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...navy);
-  doc.text(WASH_RECEIVER,PADX,y+28);doc.text(String((approved&&bill.approved_by_name)||'Velto'),c2X,y+28);
-  y+=46;
   // --- Terms & Conditions ---
   guard();
   doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...navy);doc.text('TERMS & CONDITIONS',PADX,y,{charSpace:.6});y+=15;
