@@ -782,6 +782,11 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
 #invoiceModal .r-perfdots{flex:1;height:1px;margin:0 14px;background-image:linear-gradient(to right,#C9CBD2 50%,transparent 50%);background-size:8px 1px}
 #invoiceModal .r-terms{padding:0 24px 8px}
 #invoiceModal .r-terms-h{font-size:11px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#0B1020;margin-bottom:7px}
+#invoiceModal .r-handover{display:flex;gap:14px;padding:18px 24px 6px}
+#invoiceModal .r-ho{flex:1;border-top:1px solid #0B1020;padding-top:7px}
+#invoiceModal .r-ho-k{font-size:9.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#6B7280}
+#invoiceModal .r-ho-v{font-size:14px;font-weight:700;color:#0B1020;margin-top:2px}
+#invoiceModal .r-ho-sig{font-size:10px;color:#9AA1B2;margin-top:14px}
 #invoiceModal .r-terms ol{margin:0;padding-left:16px;color:#131A33;font-size:10.5px;line-height:1.5;text-transform:uppercase;font-weight:500}
 #invoiceModal .r-terms li{margin-bottom:3px}
 #invoiceModal .r-foot{padding:26px 24px 28px;border-top:1px solid #E6E7EC}
@@ -2589,6 +2594,15 @@ function roFirstName(name){
 }
 /* ============================ WASH PLANT BILL ============================ */
 const WASH_DEFAULTS=[[/blanket|comforter|quilt|duvet/i,100],[/bed ?sheet/i,30],[/curtain/i,30]];
+const WASH_RECEIVER='Thanu Kaka';
+const WASH_TERMS=[
+ 'This bill lists every item handed to the wash plant on the date above, against its order number.',
+ 'Please verify the piece count against the receiving summary before the items leave the outlet — shortages reported later cannot be accepted.',
+ 'The wash plant is responsible for any loss, damage, or colour transfer while items are in its custody.',
+ 'All items must be returned clean, fully dry, pressed where applicable, and counted to match this bill.',
+ 'Rewash items are corrections of earlier work and carry no charge.',
+ 'Payment is settled as per the standing agreement between Velto and the wash plant.'
+];
 let washPricing = lsGet('velto_wash_pricing') || {};
 let washBill = lsGet('velto_wash_bill') || null;
 function washQualifies(svc){ const s=(svc||'').trim(); return /wash|dry/i.test(s) && !/^iron/i.test(s); }
@@ -2672,7 +2686,7 @@ async function washSaveBill(){
   }catch(e){ console.warn('wash save',e); }
 }
 async function loadWashBill(){
-  // populate today's qualifying order line-items, then merge the shared draft from DB
+  // populate today's qualifying order line-items, then load the SHARED current bill from DB
   try{
     if(sb){
       const today=washToday();
@@ -2682,14 +2696,40 @@ async function loadWashBill(){
         const {data}=await sb.from('order_items').select('order_id,service_category,item_name,quantity').in('order_id',dbids);
         if(data){ const byId={}; for(const r of data){ (byId[r.order_id]=byId[r.order_id]||[]).push({svc:r.service_category,name:r.item_name,qty:r.quantity}); } for(const o of todays){ if(byId[o.dbid]) o.lines=byId[o.dbid]; } }
       }
-      const {data:bill}=await sb.from('wash_bills').select('*').eq('status','draft').eq('bill_date',today).order('created_at',{ascending:false}).limit(1).maybeSingle();
-      if(bill){ const {data:items}=await sb.from('wash_bill_items').select('*').eq('bill_id',bill.id).order('sort',{ascending:true});
-        washBill={id:bill.id,bill_date:bill.bill_date,status:bill.status,items:(items||[]).map(r=>({id:r.id,dbid:r.id,order_number:r.order_number,item_name:r.item_name,qty:r.qty,unit_price:Number(r.unit_price),amount:Number(r.amount),is_rewash:r.is_rewash,is_custom:r.is_custom,sort:r.sort}))};
+      // the current bill is the LATEST bill for today — draft OR approved — so the whole team sees the same thing
+      const {data:bills}=await sb.from('wash_bills').select('*').eq('bill_date',today).order('created_at',{ascending:false}).limit(1);
+      const bill=bills&&bills[0];
+      if(bill){
+        const {data:items}=await sb.from('wash_bill_items').select('*').eq('bill_id',bill.id).order('sort',{ascending:true});
+        washBill={id:bill.id,bill_date:bill.bill_date,status:bill.status,paid:!!bill.paid,paid_by_name:bill.paid_by_name,approved_by_name:bill.approved_by_name,approved_at:bill.approved_at,
+          items:(items||[]).map(r=>({id:r.id,dbid:r.id,order_number:r.order_number,item_name:r.item_name,qty:r.qty,unit_price:Number(r.unit_price),amount:Number(r.amount),is_rewash:r.is_rewash,is_custom:r.is_custom,sort:r.sort}))};
         washPersistLocal();
+        if(bill.status!=='approved') washAutofill();   // only a live draft keeps absorbing new orders
+        return;
       }
     }
   }catch(e){ console.warn('wash load',e); }
   washEnsureBill(); washAutofill();
+}
+/* live team sync for the wash bill — every device sees creates/edits/approvals/payments at once */
+let _washChannel=null, _washRefreshT=null;
+function washRefreshFromRealtime(){
+  if(_washRefreshT) clearTimeout(_washRefreshT);
+  _washRefreshT=setTimeout(()=>{
+    const onScreen=document.getElementById('s-washbill')&&document.getElementById('s-washbill').classList.contains('active');
+    const editing=onScreen && document.activeElement && document.activeElement.closest && document.activeElement.closest('#washBody') && /INPUT|SELECT/.test(document.activeElement.tagName);
+    if(editing){ _washRefreshT=setTimeout(washRefreshFromRealtime,1500); return; }  // don't yank a field mid-edit; retry shortly
+    loadWashBill().then(()=>{ if(onScreen){ renderWashBill(); if(_washHistOpen){ washLoadHistory().then(()=>{ if(_washHistOpen) renderWashHistory(); }); } } updateWashHome(); });
+  }, 500);
+}
+function subscribeWashBill(){
+  if(!sb || _washChannel) return;
+  try{
+    _washChannel=sb.channel('velto-wash-'+Date.now())
+      .on('postgres_changes',{event:'*',schema:'public',table:'wash_bill_items'}, washRefreshFromRealtime)
+      .on('postgres_changes',{event:'*',schema:'public',table:'wash_bills'}, washRefreshFromRealtime)
+      .subscribe();
+  }catch(e){ console.warn('wash realtime',e); }
 }
 
 /* ---------------------------------- UI ---------------------------------- */
@@ -2808,7 +2848,7 @@ function washInvoiceSheet(bill){
     </div></header>
     <section class="r-metastrip">
       <div><div class="r-mk">Issued</div><div class="r-mv">${he(fullDate(bill.bill_date))}</div></div>
-      <div><div class="r-mk">To</div><div class="r-mv">Washing Plant</div></div>
+      <div><div class="r-mk">Received by</div><div class="r-mv">${he(WASH_RECEIVER)}</div></div>
       <div><div class="r-mk">Items</div><div class="r-mv mono">${qty}</div></div>
     </section>
     <section class="r-body">
@@ -2823,8 +2863,17 @@ function washInvoiceSheet(bill){
       </div>
       <div style="margin-top:16px"><div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6B7280;margin-bottom:8px">Receiving summary (count on return)</div>${sline}</div>
     </section>
-    <section class="r-foot"><div class="r-thanks">Velto &times; Washing Plant</div>
-      <div class="r-subthanks">${approved?('Approved by '+he(bill.approved_by_name||'Staff')+' \u00B7 '+he(fullDate(bill.approved_at))):'Draft \u2014 not yet approved.'}<br/>House 2 Road 14 Sector 11 Uttara, Dhaka \u00B7 01605-162788</div></section>
+    <section class="r-handover">
+      <div class="r-ho"><div class="r-ho-k">Received by</div><div class="r-ho-v">${he(WASH_RECEIVER)}</div><div class="r-ho-sig">Signature</div></div>
+      <div class="r-ho r-ho-r"><div class="r-ho-k">Handed over by</div><div class="r-ho-v">${he((bill.status==='approved'&&bill.approved_by_name)||'Velto')}</div><div class="r-ho-sig">${bill.status==='approved'?he(fullDate(bill.approved_at)):'Signature'}</div></div>
+    </section>
+    <section class="r-terms">
+      <div class="r-terms-h">Terms &amp; Conditions</div>
+      <ol>${WASH_TERMS.map(t=>`<li>${he(t)}</li>`).join('')}</ol>
+    </section>
+    <section class="r-foot"><div class="r-thanks">Velto &times; <em>Washing Plant.</em></div>
+      <div class="r-subthanks">${bill.paid?('Paid \u00B7 '+he(bill.paid_by_name||'')+'<br/>'):''}House 2 Road 14 Sector 11 Uttara, Dhaka \u00B7 01605-162788</div></section>
+    <footer class="r-legal"><div class="sig">VELTO \u00B7 Dhaka</div><div class="ver">Wash bill \u00B7 <b>${he(fullDate(bill.bill_date))}</b> \u00B7 ${bill.status==='approved'?'Approved':'Draft'}</div></footer>
   </article>`;
 }
 function buildWashPdf(bill){
@@ -2850,9 +2899,9 @@ function buildWashPdf(bill){
   doc.setFillColor(...white);doc.rect(0,headH,PW,52,'F');doc.setDrawColor(...line);doc.setLineWidth(0.8);doc.line(0,headH+52,PW,headH+52);
   const colX=[PADX,PADX+CW/3,PADX+2*CW/3];
   doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(...muted2);
-  doc.text('ISSUED',colX[0],headH+22,{charSpace:1.2});doc.text('TO',colX[1],headH+22,{charSpace:1.2});doc.text('ITEMS',colX[2],headH+22,{charSpace:1.2});
+  doc.text('ISSUED',colX[0],headH+22,{charSpace:1.2});doc.text('RECEIVED BY',colX[1],headH+22,{charSpace:1.2});doc.text('ITEMS',colX[2],headH+22,{charSpace:1.2});
   doc.setFontSize(11);doc.setTextColor(...navy);doc.text(String(fullDate(bill.bill_date)||''),colX[0],headH+40);
-  doc.text('Washing Plant',colX[1],headH+40);
+  doc.text(WASH_RECEIVER,colX[1],headH+40);
   doc.setFont('courier','normal');doc.text(String(qtyN),colX[2],headH+40);
   let y=headH+52+34;
   doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(...muted);
@@ -2875,9 +2924,23 @@ function buildWashPdf(bill){
   doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(...ink2);
   const sm=washSummaryOf(items); const sline=Object.keys(sm).sort().map(k=>k+': '+sm[k]).join('   \u00B7   ');
   let sy=totY+36; doc.splitTextToSize(sline||'\u2014',tcX-PADX-20).forEach(t=>{doc.text(t,PADX,sy);sy+=14;});
-  y=totY+tcH+26;
-  if(approved){ doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(...muted);doc.text('Approved by '+(bill.approved_by_name||'Staff')+' on '+fullDate(bill.approved_at),PADX,y);y+=18; }
-  const lbY=Math.max(y+6,PH-32);doc.setFillColor(...navy);doc.rect(0,lbY,PW,32,'F');
+  y=totY+tcH+30;
+  // --- Handover signatures ---
+  guard();
+  const halfW=(CW-24)/2, c2X=PADX+halfW+24;
+  doc.setDrawColor(...navy);doc.setLineWidth(0.8);doc.line(PADX,y,PADX+halfW,y);doc.line(c2X,y,c2X+halfW,y);
+  doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(...muted2);
+  doc.text('RECEIVED BY',PADX,y+13,{charSpace:.8});doc.text('HANDED OVER BY',c2X,y+13,{charSpace:.8});
+  doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...navy);
+  doc.text(WASH_RECEIVER,PADX,y+28);doc.text(String((approved&&bill.approved_by_name)||'Velto'),c2X,y+28);
+  y+=46;
+  // --- Terms & Conditions ---
+  guard();
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...navy);doc.text('TERMS & CONDITIONS',PADX,y,{charSpace:.6});y+=15;
+  doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(...muted);
+  WASH_TERMS.forEach((t,i)=>{ guard(); const lines=doc.splitTextToSize((i+1)+'.  '+t,CW-6); lines.forEach((ln,j)=>{ doc.text(ln,PADX+(j?12:0),y); y+=12; }); y+=2; });
+  if(approved){ y+=4; guard(); doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(...muted);doc.text('Approved & locked by '+(bill.approved_by_name||'Staff')+' on '+fullDate(bill.approved_at)+(bill.paid?'  ·  Paid':''),PADX,y);y+=16; }
+  const lbY=Math.max(y+8,PH-32);doc.setFillColor(...navy);doc.rect(0,lbY,PW,32,'F');
   doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...white);doc.text('VELTO  \u00B7  DHAKA',PADX,lbY+20,{charSpace:1});
   doc.setFont('courier','normal');doc.setFontSize(8.5);doc.setTextColor(142,151,184);doc.text('Wash bill \u00B7 '+(fullDate(bill.bill_date)||''),PW-PADX,lbY+20,{align:'right'});
   return doc;
@@ -3690,10 +3753,18 @@ function bootNotifications(){
   loadNotifPrefs();
   subscribeOrders();
   subscribeReorderActions();
+  subscribeWashBill();
   if(_notifPrefs.browser && ('Notification' in window) && Notification.permission==='granted'){ enablePush(); }
   if(!window._notifVisHookAttached){
     document.addEventListener('visibilitychange', ()=>{
-      if(document.visibilityState === 'visible' && !_ordersChannel){subscribeOrders();}
+      if(document.visibilityState === 'visible'){
+        if(!_ordersChannel) subscribeOrders();
+        if(!_roChannel) subscribeReorderActions();
+        if(!_washChannel) subscribeWashBill();
+        // pull the freshest shared state on return
+        try{ if(typeof loadReorderActions==='function') loadReorderActions(); }catch(e){}
+        try{ if(document.getElementById('s-washbill')&&document.getElementById('s-washbill').classList.contains('active')) loadWashBill().then(()=>renderWashBill()); }catch(e){}
+      }
     });
     window._notifVisHookAttached = true;
   }
