@@ -314,49 +314,72 @@ body{background:radial-gradient(1100px 600px at 80% -10%,rgba(0,214,180,.10),tra
 .ro-loyal{background:rgba(255,184,0,.12);border:1px solid rgba(255,200,61,.36);border-radius:9px;padding:8px 10px;margin-bottom:7px;font-size:12px;color:#ffce5a;line-height:1.45}
 .ro-when-row{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:11.5px;color:var(--tx-3)}
 .ro-when{flex:1;background:var(--bg-2);color:var(--tx-1);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:12px}
-#s-washbill{padding-bottom:90px}
-.wa-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
-.wa-title{font-size:19px;font-weight:800}
-.wa-date{font-size:12px;color:var(--tx-3);margin-top:2px}
-.wa-draft{color:#ffce5a;font-weight:700}
-.wa-locked{color:#46e08a;font-weight:700}
-.wa-note{font-size:11.5px;color:var(--tx-3);background:rgba(255,255,255,.03);border-radius:8px;padding:8px 10px;margin:8px 0;line-height:1.5}
-.wa-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
-.wa-table th{text-align:left;color:var(--tx-3);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;padding:6px 5px;border-bottom:1px solid var(--line)}
-.wa-table td{padding:7px 5px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle}
-.wa-ord{color:var(--tx-3);font-size:11px;white-space:nowrap}
-.wa-nm{font-weight:600}
-.wa-oid{display:inline-block;font-size:10.5px;color:var(--accent,#5b9dff);margin-top:2px}
-.wa-custom{background:rgba(124,77,255,.18);color:#b39dff;border-radius:5px;padding:1px 6px;font-size:10px}
-.wa-price,.wa-qty{width:58px;background:var(--bg-2);color:var(--tx-1);border:1px solid var(--line);border-radius:7px;padding:5px 6px;font-size:12.5px;text-align:right}
-.wa-qty{width:46px;text-align:center}
-.wa-a{text-align:right;font-weight:700;white-space:nowrap}
-.wa-p{text-align:right;white-space:nowrap}.wa-q{text-align:center}
-.wa-rew{color:#46e08a;font-size:11px}
-.wa-act{white-space:nowrap;text-align:right}
-.wa-x{background:none;border:none;color:var(--tx-3);font-size:14px;padding:2px 5px;cursor:pointer}
-.wa-x:active{color:var(--tx-1)}
-.wa-empty,.wa-dim{color:var(--tx-3);text-align:center;padding:16px 8px;font-size:12px}
-.wa-add{display:flex;gap:6px;margin:10px 0}
-.wa-add input{flex:1;min-width:0;background:var(--bg-2);color:var(--tx-1);border:1px solid var(--line);border-radius:8px;padding:8px 9px;font-size:12px}
-.wa-add input[type=number]{flex:0 0 56px}
-.wa-add button{background:var(--accent,#1f6feb);color:#fff;border:none;border-radius:8px;padding:0 14px;font-weight:700;font-size:13px}
-.wa-sum-wrap{margin:14px 0 6px}
-.wa-sum-t{font-size:10.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--tx-3);margin-bottom:6px}
-.wa-sum{display:flex;flex-wrap:wrap;gap:6px}
-.wa-chip{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-size:12px;color:var(--tx-2)}
-.wa-chip b{color:var(--tx-1)}
-.wa-totals{margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
-.wa-tline{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;color:var(--tx-2)}
-.wa-grand{font-size:16px;color:var(--tx-1);font-weight:800;margin-top:2px}
-.wa-cta{display:flex;gap:8px;margin-top:14px}
-.wa-btn{flex:1;border:none;border-radius:10px;padding:13px;font-weight:700;font-size:14px}
-.wa-approve{background:#25d366;color:#08260f}
-.wa-print{background:var(--accent,#1f6feb);color:#fff}
-.wa-ghost{background:var(--bg-2);color:var(--tx-2);border:1px solid var(--line);flex:0 0 auto;padding:13px 16px}
-.wa-mo{margin-top:8px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
-.wa-mo-h{display:flex;justify-content:space-between;background:rgba(255,255,255,.04);padding:8px 11px;font-size:13px}
-.wa-mo-row{display:flex;justify-content:space-between;padding:7px 11px;font-size:12px;color:var(--tx-2);border-top:1px solid rgba(255,255,255,.05)}
+#s-washbill{padding-bottom:100px}
+.wb-hero{background:linear-gradient(135deg,#141a30,#0c1124);border:1px solid var(--line);border-radius:16px;padding:16px 18px;position:relative;overflow:hidden;margin-bottom:14px}
+.wb-hero::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(96deg,#4A1FD8,#2A6BF2 48%,#1FC6F0)}
+.wb-hero::before{content:"";position:absolute;inset:0;background:radial-gradient(320px 160px at 92% -30%,rgba(91,43,224,.4),transparent 60%),radial-gradient(280px 160px at 0% 130%,rgba(24,214,240,.14),transparent 60%);pointer-events:none}
+.wb-hero-top{display:flex;justify-content:space-between;align-items:center;position:relative;z-index:1}
+.wb-hero-lbl{font-size:10px;letter-spacing:.18em;color:#8E97B8;font-weight:600}
+.wb-hero-date{font-size:21px;font-weight:800;color:#fff;margin-top:8px;position:relative;z-index:1}
+.wb-hero-amt{font-size:30px;font-weight:800;color:#fff;margin-top:4px;letter-spacing:-.01em;position:relative;z-index:1}
+.wb-hero-sub{font-size:13px;font-weight:600;color:#9aa3c4}
+.wb-hero-note{font-size:11.5px;color:#8E97B8;margin-top:7px;position:relative;z-index:1}
+.wb-pill{font-size:10px;font-weight:800;letter-spacing:.08em;padding:4px 10px;border-radius:20px}
+.wb-draft{color:#ffce5a;background:rgba(255,200,61,.13);border:1px solid rgba(255,200,61,.4)}
+.wb-appr{color:#5b9dff;background:rgba(42,107,242,.14);border:1px solid rgba(42,107,242,.4)}
+.wb-paid{color:#46e08a;background:rgba(37,211,102,.14);border:1px solid rgba(37,211,102,.42)}
+.wb-list{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.wb-row{display:flex;align-items:center;gap:10px;background:var(--bg-1,#0d1326);padding:11px 12px}
+.wb-r-l{flex:1;min-width:0}
+.wb-nm{font-weight:600;font-size:13.5px}
+.wb-tag{display:inline-block;font-size:10.5px;color:#5b9dff;margin-top:3px}
+.wb-tag-c{color:#b39dff;background:rgba(124,77,255,.16);border-radius:5px;padding:1px 6px}
+.wb-r-ro{display:flex;align-items:center;gap:10px;font-size:12.5px}
+.wb-r-ro .wb-q{color:var(--tx-3)}.wb-r-ro .wb-u{color:var(--tx-2)}
+.wb-r-ed{display:flex;align-items:center;gap:5px}
+.wb-in{background:var(--bg-2);color:var(--tx-1);border:1px solid var(--line);border-radius:7px;padding:6px 6px;font-size:13px;text-align:center}
+.wb-in-q{width:42px}.wb-in-p{width:56px;text-align:right}
+.wb-x2{color:var(--tx-3);font-size:12px}
+.wb-rew{color:#46e08a;font-size:11px;width:56px;text-align:center}
+.wb-amt{font-weight:800;font-size:13.5px;min-width:58px;text-align:right;white-space:nowrap}
+.wb-tools{display:flex;gap:2px}
+.wb-t{background:none;border:none;color:var(--tx-3);font-size:14px;width:26px;height:26px;border-radius:6px;cursor:pointer}
+.wb-t.on{color:#46e08a}.wb-t:active{background:rgba(255,255,255,.06)}
+.wb-empty{text-align:center;color:var(--tx-3);padding:22px 8px;font-size:13px;background:var(--bg-1,#0d1326)}
+.wb-empty span{font-size:11.5px;opacity:.8}
+.wb-add{display:flex;gap:6px;margin:10px 0 2px}
+.wb-add input{flex:1;min-width:0;background:var(--bg-2);color:var(--tx-1);border:1px solid var(--line);border-radius:9px;padding:9px 10px;font-size:12.5px}
+.wb-add input[type=number]{flex:0 0 52px;text-align:center}
+.wb-add button{flex:0 0 44px;background:var(--accent,#1f6feb);color:#fff;border:none;border-radius:9px;font-size:20px;font-weight:600}
+.wb-sec{margin-top:16px}
+.wb-sec-t{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--tx-3);margin-bottom:8px}
+.wb-sum{display:flex;flex-wrap:wrap;gap:6px}
+.wb-chip{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--tx-2)}
+.wb-chip b{color:#fff;margin-left:3px}
+.wb-dim{color:var(--tx-3);font-size:12px}
+.wb-cta{display:flex;gap:8px;margin-top:18px}
+.wb-btn{flex:1;border:none;border-radius:12px;padding:14px;font-weight:700;font-size:14px;cursor:pointer}
+.wb-go{background:#25d366;color:#08260f}
+.wb-pay{background:linear-gradient(135deg,#2A6BF2,#5b2be0);color:#fff}
+.wb-gh{background:var(--bg-2);color:var(--tx-2);border:1px solid var(--line);flex:0 0 auto;padding:14px 18px}
+.wb-link{display:block;width:100%;text-align:center;background:none;border:none;color:var(--tx-3);font-size:12.5px;margin-top:10px;padding:6px;cursor:pointer}
+.wb-hist-btn{display:block;width:100%;margin-top:22px;background:var(--bg-2);border:1px solid var(--line);color:var(--tx-2);border-radius:12px;padding:13px;font-size:13.5px;font-weight:600;cursor:pointer}
+.wb-hist-btn.on{color:#fff;border-color:var(--accent,#2A6BF2)}
+.wb-hist-empty{text-align:center;color:var(--tx-3);font-size:12.5px;padding:16px}
+.wb-mo{margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.wb-mo-h{display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,.04);padding:11px 13px}
+.wb-mo-h b{font-size:14px}
+.wb-mo-c{display:block;font-size:11px;color:var(--tx-3);margin-top:2px}
+.wb-mo-tot{font-size:15px;font-weight:800}
+.wb-mo-row{display:flex;align-items:center;gap:10px;padding:11px 13px;border-top:1px solid rgba(255,255,255,.05);cursor:pointer}
+.wb-mo-row:active{background:rgba(255,255,255,.03)}
+.wb-mo-l{flex:1;min-width:0}
+.wb-mo-id{font-size:13.5px;font-weight:700}
+.wb-mo-meta{font-size:11px;color:var(--tx-3);margin-top:2px}
+.wb-mo-r{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.wb-mo-amt{font-size:13.5px;font-weight:800}
+.wb-pd{color:#46e08a;font-weight:700}.wb-up{color:#ffce5a;font-weight:700}
+.wb-mo-pay{background:rgba(42,107,242,.16);border:1px solid rgba(42,107,242,.4);color:#5b9dff;border-radius:7px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer}
 .ro-card{padding:10px 12px}
 .ro-pr{flex-shrink:0;font-size:9.5px;font-weight:800;letter-spacing:.3px;padding:2px 8px;border-radius:20px}
 .ro-pr-HIGH{background:rgba(255,107,107,.16);color:#ff8a8a}
@@ -2671,54 +2694,99 @@ async function loadWashBill(){
 
 /* ---------------------------------- UI ---------------------------------- */
 function washRenderTotals(){ const t=document.getElementById('waTotal'); if(t)t.textContent='৳'+washTotal().toLocaleString(); const c=document.getElementById('waCount'); if(c)c.textContent=washQtyTotal(); const s=document.getElementById('waSummary'); if(s)s.innerHTML=washSummaryHtml(); }
-function washSummaryHtml(){ const m=washSummary(); const keys=Object.keys(m); if(!keys.length) return '<span class="wa-dim">No items yet</span>'; return keys.sort().map(k=>`<span class="wa-chip">${he(k)}: <b>${m[k]}</b></span>`).join(''); }
+function washSummaryHtml(){ const m=washSummary(); const keys=Object.keys(m); if(!keys.length) return '<span class="wb-dim">No items yet</span>'; return keys.sort().map(k=>`<span class="wb-chip">${he(k)} <b>${m[k]}</b></span>`).join(''); }
+function washTotalOf(items){ return (items||[]).reduce((s,i)=>s+(Number(i.amount)||0),0); }
+function washMonthLabel(mo){ if(!mo)return''; const [y,m]=mo.split('-'); return ['January','February','March','April','May','June','July','August','September','October','November','December'][parseInt(m,10)-1]+' '+y; }
+function washStatusPill(b){ if(b.status!=='approved') return '<span class="wb-pill wb-draft">DRAFT</span>'; return b.paid?'<span class="wb-pill wb-paid">PAID</span>':'<span class="wb-pill wb-appr">LOCKED · UNPAID</span>'; }
 function renderWashBill(){
   const box=document.getElementById('washBody'); if(!box) return;
   washEnsureBill();
-  const approved=washBill.status==='approved';
-  const rows=washBill.items.slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
-  const head=`<div class="wa-head"><div><div class="wa-title">Wash Plant Bill</div><div class="wa-date">${fullDate(washBill.bill_date)} · ${approved?'<span class=\"wa-locked\">APPROVED & LOCKED</span>':'<span class=\"wa-draft\">DRAFT — editable</span>'}</div></div></div>`;
-  const note = approved
-    ? `<div class="wa-note">Approved by ${he(washBill.approved_by_name||'Staff')} · ${relDate(washBill.approved_at)}. New orders now go to the next bill.</div>`
-    : `<div class="wa-note">Auto-fills from today's Wash + Iron and Dry-Cleaning orders. Tap a price to edit. Ironing-only orders are not sent to the plant.</div>`;
+  const b=washBill, approved=b.status==='approved';
+  const rows=b.items.slice().sort((x,y)=>(x.sort||0)-(y.sort||0));
+  const hero=`<div class="wb-hero">
+    <div class="wb-hero-top"><span class="wb-hero-lbl">WASH PLANT BILL</span>${washStatusPill(b)}</div>
+    <div class="wb-hero-date">${fullDate(b.bill_date)}</div>
+    <div class="wb-hero-amt"><span id="waTotal">৳${washTotal().toLocaleString()}</span><span class="wb-hero-sub"> · <span id="waCount">${washQtyTotal()}</span> items</span></div>
+    <div class="wb-hero-note">${approved?(b.paid?('Paid · '+he(b.paid_by_name||'')):('Locked by '+he(b.approved_by_name||'Staff')+' · '+relDate(b.approved_at))):'Fills automatically from today’s wash &amp; dry-clean orders'}</div>
+  </div>`;
   const rowsHtml = rows.length ? rows.map(it=>{
-    const orderTag = it.is_custom?'<span class="wa-custom">custom</span>':`<span class="wa-oid mono">${he(washOrderNo(it.order_number))}</span>`;
-    const priceCell = approved
-      ? `৳${(it.is_rewash?0:it.unit_price).toLocaleString()}`
-      : (it.is_rewash?'<span class="wa-rew">rewash · ৳0</span>':`<input class="wa-price" type="number" inputmode="numeric" value="${it.unit_price}" min="0" onchange="washSetPrice('${it.id}',this.value)">`);
-    const qtyCell = approved ? it.qty : `<input class="wa-qty" type="number" inputmode="numeric" value="${it.qty}" min="0" onchange="washSetQty('${it.id}',this.value)">`;
-    const actions = approved ? '' : `<button class="wa-x" title="Rewash (no charge)" onclick="washToggleRewash('${it.id}')">${it.is_rewash?'↩':'⟳'}</button><button class="wa-x" title="Remove" onclick="washRemove('${it.id}')">✕</button>`;
-    return `<tr><td class="wa-nm"><div>${he(it.item_name)}</div>${orderTag}</td><td class="wa-q">${qtyCell}</td><td class="wa-p">${priceCell}</td><td class="wa-a">৳${(Number(it.amount)||0).toLocaleString()}</td><td class="wa-act">${actions}</td></tr>`;
-  }).join('') : `<tr><td colspan="5" class="wa-empty">No wash/dry items yet today. New qualifying orders appear here automatically.</td></tr>`;
-  const table=`<table class="wa-table"><thead><tr><th>Item · Order</th><th>Qty</th><th>Unit</th><th>Amount</th><th></th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
-  const custom = approved ? '' : `<div class="wa-add"><input id="waCustName" placeholder="Add item not in list (e.g. Carpet)"><input id="waCustQty" type="number" value="1" min="1" title="Qty"><input id="waCustPrice" type="number" placeholder="৳" min="0" title="Unit price"><button onclick="washAddCustom()">Add</button></div>`;
-  const totals=`<div class="wa-totals"><div class="wa-tline"><span>Items</span><b id="waCount">${washQtyTotal()}</b></div><div class="wa-tline wa-grand"><span>Total payable to plant</span><b id="waTotal">৳${washTotal().toLocaleString()}</b></div></div>`;
-  const summary=`<div class="wa-sum-wrap"><div class="wa-sum-t">Receiving summary (for counting on return)</div><div class="wa-sum" id="waSummary">${washSummaryHtml()}</div></div>`;
-  const cta = approved
-    ? `<div class="wa-cta"><button class="wa-btn wa-print" onclick="washShowInvoice()">📄 View invoice</button><button class="wa-btn wa-ghost" onclick="washStartNext()">Start next bill</button></div>`
-    : `<div class="wa-cta"><button class="wa-btn wa-approve" onclick="washApprove()">✓ Approve & lock for plant</button><button class="wa-btn wa-ghost" onclick="washPrintInvoice()">👁 Preview</button><button class="wa-btn wa-ghost" onclick="washOpenHistory()">Past bills</button></div>`;
-  box.innerHTML = head + note + table + custom + summary + totals + cta + `<div id="waHistory"></div>`;
+    const oid = it.is_custom?'<span class="wb-tag wb-tag-c">custom</span>':`<span class="wb-tag mono">${he(washOrderNo(it.order_number))}</span>`;
+    const right = approved
+      ? `<div class="wb-r-ro"><span class="wb-q">×${it.qty}</span><span class="wb-u">${it.is_rewash?'rewash':'৳'+it.unit_price}</span><span class="wb-amt">৳${(Number(it.amount)||0).toLocaleString()}</span></div>`
+      : `<div class="wb-r-ed"><input class="wb-in wb-in-q" type="number" inputmode="numeric" value="${it.qty}" min="0" onchange="washSetQty('${it.id}',this.value)" title="Qty"><span class="wb-x2">×</span>${it.is_rewash?'<span class="wb-rew">rewash</span>':`<input class="wb-in wb-in-p" type="number" inputmode="numeric" value="${it.unit_price}" min="0" onchange="washSetPrice('${it.id}',this.value)" title="Unit ৳">`}<span class="wb-amt">৳${(Number(it.amount)||0).toLocaleString()}</span></div>`;
+    const tools = approved?'' : `<div class="wb-tools"><button class="wb-t${it.is_rewash?' on':''}" title="Rewash — no charge" onclick="washToggleRewash('${it.id}')">⟳</button><button class="wb-t" title="Remove" onclick="washRemove('${it.id}')">✕</button></div>`;
+    return `<div class="wb-row"><div class="wb-r-l"><div class="wb-nm">${he(it.item_name)}</div>${oid}</div>${right}${tools}</div>`;
+  }).join('') : `<div class="wb-empty">No wash or dry-clean items yet today.<br><span>New qualifying orders drop in here automatically.</span></div>`;
+  const list=`<div class="wb-list">${rowsHtml}</div>`;
+  const custom = approved?'' : `<div class="wb-add"><input id="waCustName" placeholder="Add off-list item (e.g. Carpet)"><input id="waCustQty" type="number" value="1" min="1" title="Qty"><input id="waCustPrice" type="number" placeholder="৳" min="0" title="Unit"><button onclick="washAddCustom()" title="Add">＋</button></div>`;
+  const summary=`<div class="wb-sec"><div class="wb-sec-t">Receiving summary · count on return</div><div class="wb-sum" id="waSummary">${washSummaryHtml()}</div></div>`;
+  let cta;
+  if(!approved){
+    cta=`<div class="wb-cta"><button class="wb-btn wb-go" onclick="washApprove()">✓ Approve &amp; lock</button><button class="wb-btn wb-gh" onclick="washShowInvoice()">👁 Preview</button></div>`;
+  } else if(!b.paid){
+    cta=`<div class="wb-cta"><button class="wb-btn wb-pay" onclick="washMarkPaid()">৳ Mark as paid</button><button class="wb-btn wb-gh" onclick="washShowInvoice()">📄 View invoice</button></div><button class="wb-link" onclick="washStartNext()">Start next bill →</button>`;
+  } else {
+    cta=`<div class="wb-cta"><button class="wb-btn wb-go" onclick="washShowInvoice()">📄 View invoice</button><button class="wb-btn wb-gh" onclick="washStartNext()">Next bill</button></div>`;
+  }
+  const hist=`<button class="wb-hist-btn" onclick="washToggleHistory()">📚 Past bills — by month</button><div id="waHistory"></div>`;
+  box.innerHTML = hero + list + custom + summary + cta + hist;
+  if(_washHistOpen){ washLoadHistory().then(()=>{ if(_washHistOpen) renderWashHistory(); }); }
 }
-function washOpenHistory(){
+/* ---- mark as paid ---- */
+function washMarkPaid(){ washEnsureBill(); washMarkPaidObj(washBill, true); }
+function washMarkPaidObj(b, isCurrent){
+  if(!b||b.status!=='approved'||b.paid) return;
+  if(!confirm('Mark the bill for '+fullDate(b.bill_date)+' as paid to the wash plant?')) return;
+  b.paid=true; b.paid_at=new Date().toISOString(); b.paid_by_name=currentName||'Staff';
+  washUpdateArchivePaid(b); washSavePaid(b);
+  if(isCurrent){ washPersistLocal(); renderWashBill(); } else { renderWashHistory(); }
+  toast('Marked paid · '+fullDate(b.bill_date));
+}
+function washUpdateArchivePaid(b){ try{ const arr=lsGet('velto_wash_archive')||[]; for(const x of arr){ if((b.id&&x.id===b.id)||(x.bill_date===b.bill_date&&x.approved_at===b.approved_at)){ x.paid=true; x.paid_at=b.paid_at; x.paid_by_name=b.paid_by_name; } } lsSet('velto_wash_archive',arr); }catch(e){} }
+async function washSavePaid(b){ if(!sb||!b.id) return; try{ await sb.from('wash_bills').update({paid:true,paid_at:b.paid_at,paid_by_name:b.paid_by_name}).eq('id',b.id); }catch(e){ console.warn('wash paid save',e); } }
+/* ---- month-grouped history ---- */
+let _washHistory=null, _washHistOpen=false;
+async function washLoadHistory(){
+  let bills=[];
+  if(sb){ try{ const {data}=await sb.from('wash_bills').select('*').eq('status','approved').order('bill_date',{ascending:false}); if(data&&data.length){ bills=data.map(r=>({id:r.id,bill_date:r.bill_date,status:r.status,total_amount:Number(r.total_amount)||0,item_count:r.item_count||0,summary:r.summary,paid:!!r.paid,paid_by_name:r.paid_by_name,approved_by_name:r.approved_by_name,approved_at:r.approved_at})); } }catch(e){ console.warn('wash hist',e); } }
+  if(!bills.length){ const arr=lsGet('velto_wash_archive')||[]; bills=arr.map(x=>({id:x.id,bill_date:x.bill_date,status:x.status,total_amount:(x.total_amount!=null?x.total_amount:washTotalOf(x.items)),item_count:x.item_count||0,summary:x.summary,paid:!!x.paid,paid_by_name:x.paid_by_name,approved_by_name:x.approved_by_name,approved_at:x.approved_at,items:x.items})); }
+  _washHistory=bills; return bills;
+}
+function washToggleHistory(force){
+  _washHistOpen = (force===true)?true:!_washHistOpen;
+  const btn=document.querySelector('.wb-hist-btn'); if(btn) btn.classList.toggle('on',_washHistOpen);
   const box=document.getElementById('waHistory'); if(!box) return;
-  const arr=lsGet('velto_wash_archive')||[];
-  if(!arr.length){ box.innerHTML='<div class="wa-note">No approved bills yet.</div>'; return; }
-  const byMonth={}; for(const b of arr){ const mo=(b.bill_date||'').slice(0,7); (byMonth[mo]=byMonth[mo]||[]).push(b); }
-  let html='<div class="wa-sum-t" style="margin-top:14px">Past bills</div>';
+  if(!_washHistOpen){ box.innerHTML=''; return; }
+  box.innerHTML='<div class="wb-hist-empty">Loading…</div>';
+  washLoadHistory().then(()=>{ if(_washHistOpen) renderWashHistory(); });
+}
+function renderWashHistory(){
+  const box=document.getElementById('waHistory'); if(!box) return;
+  const bills=_washHistory||[];
+  if(!bills.length){ box.innerHTML='<div class="wb-hist-empty">No approved bills yet.</div>'; return; }
+  const byMonth={}; bills.forEach((b,i)=>{ const mo=(b.bill_date||'').slice(0,7); (byMonth[mo]=byMonth[mo]||[]).push({b,i}); });
+  let html='';
   for(const mo of Object.keys(byMonth).sort().reverse()){
-    const bills=byMonth[mo]; const mtot=bills.reduce((s,b)=>s+(Number(b.total_amount)||0),0);
-    html+=`<div class="wa-mo"><div class="wa-mo-h"><b>${mo}</b><span>৳${mtot.toLocaleString()}</span></div>`;
-    html+=bills.map(b=>`<div class="wa-mo-row"><span>${fullDate(b.bill_date)} · ${b.item_count||0} items</span><span>৳${(Number(b.total_amount)||0).toLocaleString()}</span></div>`).join('');
+    const list=byMonth[mo]; const mtot=list.reduce((s,o)=>s+(Number(o.b.total_amount)||0),0); const unpaid=list.filter(o=>!o.b.paid).length;
+    html+=`<div class="wb-mo"><div class="wb-mo-h"><div><b>${washMonthLabel(mo)}</b><span class="wb-mo-c">${list.length} bill${list.length===1?'':'s'}${unpaid?' · '+unpaid+' unpaid':''}</span></div><span class="wb-mo-tot">৳${mtot.toLocaleString()}</span></div>`;
+    html+=list.map(o=>{ const b=o.b; const badge=b.paid?'<span class="wb-pd">PAID</span>':'<span class="wb-up">UNPAID</span>'; const pay=b.paid?'':`<button class="wb-mo-pay" onclick="event.stopPropagation();washMarkPaidObj(_washHistory[${o.i}])">Mark paid</button>`;
+      return `<div class="wb-mo-row" onclick="washOpenPast(${o.i})"><div class="wb-mo-l"><div class="wb-mo-id mono">${fullDate(b.bill_date)}</div><div class="wb-mo-meta">${b.item_count||0} items · ${badge}</div></div><div class="wb-mo-r"><span class="wb-mo-amt">৳${(Number(b.total_amount)||0).toLocaleString()}</span>${pay}</div></div>`; }).join('');
     html+='</div>';
   }
   box.innerHTML=html;
 }
+async function washOpenPast(idx){
+  const b=_washHistory&&_washHistory[idx]; if(!b) return;
+  let items=b.items;
+  if((!items||!items.length) && sb && b.id){ try{ const {data}=await sb.from('wash_bill_items').select('*').eq('bill_id',b.id).order('sort',{ascending:true}); items=(data||[]).map(r=>({id:r.id,order_number:r.order_number,item_name:r.item_name,qty:r.qty,unit_price:Number(r.unit_price),amount:Number(r.amount),is_rewash:r.is_rewash,is_custom:r.is_custom,sort:r.sort})); }catch(e){ console.warn('wash past items',e); } }
+  washShowInvoice(Object.assign({}, b, {items:items||[]}));
+}
 function washSummaryOf(items){ const m={}; for(const i of (items||[])){ const t=washItemType(i.item_name); m[t]=(m[t]||0)+(Number(i.qty)||0); } return m; }
 let _washMode=false, currentWashBill=null;
 function washPrintInvoice(){ washShowInvoice(); }   // back-compat
-function washShowInvoice(){
-  washEnsureBill();
-  currentWashBill=JSON.parse(JSON.stringify(washBill)); _washMode=true; currentInvoice=null;
+function washShowInvoice(bill){
+  let b; if(bill){ b=bill; } else { washEnsureBill(); b=washBill; }
+  currentWashBill=JSON.parse(JSON.stringify(b)); _washMode=true; currentInvoice=null;
   document.getElementById('invBody').innerHTML=washInvoiceSheet(currentWashBill);
   const m=document.getElementById('invoiceModal'); if(m){ m.classList.add('show'); try{history.pushState({v:'invoice'},'');}catch(e){} }
 }
