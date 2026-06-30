@@ -2737,6 +2737,7 @@ function washRenderTotals(){ const t=document.getElementById('waTotal'); if(t)t.
 function washSummaryHtml(){ const m=washSummary(); const keys=Object.keys(m); if(!keys.length) return '<span class="wb-dim">No items yet</span>'; return keys.sort().map(k=>`<span class="wb-chip">${he(k)} <b>${m[k]}</b></span>`).join(''); }
 function washTotalOf(items){ return (items||[]).reduce((s,i)=>s+(Number(i.amount)||0),0); }
 function washMonthLabel(mo){ if(!mo)return''; const [y,m]=mo.split('-'); return ['January','February','March','April','May','June','July','August','September','October','November','December'][parseInt(m,10)-1]+' '+y; }
+function washSealDate(d){ const dt=new Date(d); if(isNaN(dt)) return ''; const p=n=>String(n).padStart(2,'0'); return p(dt.getDate())+'\u00B7'+p(dt.getMonth()+1)+'\u00B7'+String(dt.getFullYear()).slice(2); }
 function washStatusPill(b){ if(b.status!=='approved') return '<span class="wb-pill wb-draft">DRAFT</span>'; return b.paid?'<span class="wb-pill wb-paid">PAID</span>':'<span class="wb-pill wb-appr">LOCKED · UNPAID</span>'; }
 function renderWashBill(){
   const box=document.getElementById('washBody'); if(!box) return;
@@ -2855,7 +2856,7 @@ function washInvoiceSheet(bill){
       <div class="r-ihead"><div>Item &amp; Order</div><div class="r">Qty</div><div class="r">Amount</div></div>
       ${rows}
       <div class="r-totals">
-        <div class="r-stampwrap"></div>
+        <div class="r-stampwrap">${bill.paid?`<div class="r-stamp" style="color:#1F8A5B"><div class="s1">PAID</div><div class="s2">IN FULL</div><div class="s3">${he(washSealDate(bill.paid_at))}</div></div>`:''}</div>
         <div class="r-totcard">
           <div class="r-tr"><div class="k">Items</div><div class="v">${qty}</div></div>
           <div class="r-tr total"><div class="k">Total payable</div><div class="v">\u09F3 ${total.toLocaleString()}</div></div>
@@ -2921,6 +2922,17 @@ function buildWashPdf(bill){
   const sm=washSummaryOf(items); const sline=Object.keys(sm).sort().map(k=>k+': '+sm[k]).join('   \u00B7   ');
   let sy=totY+36; doc.splitTextToSize(sline||'\u2014',tcX-PADX-20).forEach(t=>{doc.text(t,PADX,sy);sy+=14;});
   y=totY+tcH+30;
+  // --- PAID seal (when settled) ---
+  if(bill.paid){
+    guard();
+    const scx=PADX+40, scy=y+34, R=34;
+    doc.setDrawColor(31,138,91);doc.setLineWidth(2.2);doc.circle(scx,scy,R,'S');doc.setLineWidth(1);doc.circle(scx,scy,R-6,'S');
+    doc.setTextColor(31,138,91);
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.text('PAID',scx,scy-8,{align:'center',charSpace:1.5});
+    doc.setFontSize(15);doc.text('IN FULL',scx,scy+9,{align:'center',charSpace:.5});
+    doc.setFont('courier','normal');doc.setFontSize(7.5);doc.text(washSealDate(bill.paid_at),scx,scy+24,{align:'center'});
+    y=scy+R+18;
+  }
   // --- Terms & Conditions ---
   guard();
   doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...navy);doc.text('TERMS & CONDITIONS',PADX,y,{charSpace:.6});y+=15;
