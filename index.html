@@ -326,6 +326,7 @@ body{background:radial-gradient(1100px 600px at 80% -10%,rgba(0,214,180,.10),tra
 .wa-table td{padding:7px 5px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle}
 .wa-ord{color:var(--tx-3);font-size:11px;white-space:nowrap}
 .wa-nm{font-weight:600}
+.wa-oid{display:inline-block;font-size:10.5px;color:var(--accent,#5b9dff);margin-top:2px}
 .wa-custom{background:rgba(124,77,255,.18);color:#b39dff;border-radius:5px;padding:1px 6px;font-size:10px}
 .wa-price,.wa-qty{width:58px;background:var(--bg-2);color:var(--tx-1);border:1px solid var(--line);border-radius:7px;padding:5px 6px;font-size:12.5px;text-align:right}
 .wa-qty{width:46px;text-align:center}
@@ -2553,6 +2554,7 @@ let washBill = lsGet('velto_wash_bill') || null;
 function washQualifies(svc){ const s=(svc||'').trim(); return /wash|dry/i.test(s) && !/^iron/i.test(s); }
 function washBasePrice(name){ const k=(name||'').trim(); if(washPricing[k]!=null) return Number(washPricing[k]); for(const [re,p] of WASH_DEFAULTS){ if(re.test(k)) return p; } return 10; }
 function washItemType(name){ const n=(name||'').toLowerCase(); if(/blanket|comforter|quilt|duvet/.test(n))return'Blanket / Comforter'; if(/bed ?sheet/.test(n))return'Bed sheet'; if(/curtain/.test(n))return'Curtain'; if(/towel/.test(n))return'Towel'; return'Regular item'; }
+function washOrderNo(on){ if(!on) return ''; const s=String(on).trim(); if(/^vel-/i.test(s)) return s.toUpperCase(); const m=s.match(/(\d+)/); return m?('VEL-'+m[1].padStart(5,'0')):s; }
 function washToday(){ return dhakaDateStr(); }
 function washEnsureBill(){ if(washBill && washBill.status==='approved' && washBill.bill_date!==washToday()){ washBill=null; } if(!washBill){ washBill={id:null,bill_date:washToday(),status:'draft',items:[]}; } if(!washBill.items) washBill.items=[]; }
 function washTodayOrders(){ const t=washToday(); return ordersData.filter(o=>dhakaDateStr(o.rawDate)===t && o.status!=='Cancelled'); }
@@ -2663,21 +2665,21 @@ function renderWashBill(){
     ? `<div class="wa-note">Approved by ${he(washBill.approved_by_name||'Staff')} · ${relDate(washBill.approved_at)}. New orders now go to the next bill.</div>`
     : `<div class="wa-note">Auto-fills from today's Wash + Iron and Dry-Cleaning orders. Tap a price to edit. Ironing-only orders are not sent to the plant.</div>`;
   const rowsHtml = rows.length ? rows.map(it=>{
-    const orderTag = it.is_custom?'<span class="wa-custom">custom</span>':('#'+he(it.order_number||'—'));
+    const orderTag = it.is_custom?'<span class="wa-custom">custom</span>':`<span class="wa-oid mono">${he(washOrderNo(it.order_number))}</span>`;
     const priceCell = approved
       ? `৳${(it.is_rewash?0:it.unit_price).toLocaleString()}`
       : (it.is_rewash?'<span class="wa-rew">rewash · ৳0</span>':`<input class="wa-price" type="number" inputmode="numeric" value="${it.unit_price}" min="0" onchange="washSetPrice('${it.id}',this.value)">`);
     const qtyCell = approved ? it.qty : `<input class="wa-qty" type="number" inputmode="numeric" value="${it.qty}" min="0" onchange="washSetQty('${it.id}',this.value)">`;
     const actions = approved ? '' : `<button class="wa-x" title="Rewash (no charge)" onclick="washToggleRewash('${it.id}')">${it.is_rewash?'↩':'⟳'}</button><button class="wa-x" title="Remove" onclick="washRemove('${it.id}')">✕</button>`;
-    return `<tr><td class="wa-ord">${orderTag}</td><td class="wa-nm">${he(it.item_name)}</td><td class="wa-q">${qtyCell}</td><td class="wa-p">${priceCell}</td><td class="wa-a">৳${(Number(it.amount)||0).toLocaleString()}</td><td class="wa-act">${actions}</td></tr>`;
-  }).join('') : `<tr><td colspan="6" class="wa-empty">No wash/dry items yet today. New qualifying orders appear here automatically.</td></tr>`;
-  const table=`<table class="wa-table"><thead><tr><th>Order</th><th>Item</th><th>Qty</th><th>Unit</th><th>Amount</th><th></th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
+    return `<tr><td class="wa-nm"><div>${he(it.item_name)}</div>${orderTag}</td><td class="wa-q">${qtyCell}</td><td class="wa-p">${priceCell}</td><td class="wa-a">৳${(Number(it.amount)||0).toLocaleString()}</td><td class="wa-act">${actions}</td></tr>`;
+  }).join('') : `<tr><td colspan="5" class="wa-empty">No wash/dry items yet today. New qualifying orders appear here automatically.</td></tr>`;
+  const table=`<table class="wa-table"><thead><tr><th>Item · Order</th><th>Qty</th><th>Unit</th><th>Amount</th><th></th></tr></thead><tbody>${rowsHtml}</tbody></table>`;
   const custom = approved ? '' : `<div class="wa-add"><input id="waCustName" placeholder="Add item not in list (e.g. Carpet)"><input id="waCustQty" type="number" value="1" min="1" title="Qty"><input id="waCustPrice" type="number" placeholder="৳" min="0" title="Unit price"><button onclick="washAddCustom()">Add</button></div>`;
   const totals=`<div class="wa-totals"><div class="wa-tline"><span>Items</span><b id="waCount">${washQtyTotal()}</b></div><div class="wa-tline wa-grand"><span>Total payable to plant</span><b id="waTotal">৳${washTotal().toLocaleString()}</b></div></div>`;
   const summary=`<div class="wa-sum-wrap"><div class="wa-sum-t">Receiving summary (for counting on return)</div><div class="wa-sum" id="waSummary">${washSummaryHtml()}</div></div>`;
   const cta = approved
     ? `<div class="wa-cta"><button class="wa-btn wa-print" onclick="washPrintInvoice()">📄 Print / Save PDF</button><button class="wa-btn wa-ghost" onclick="washStartNext()">Start next bill</button></div>`
-    : `<div class="wa-cta"><button class="wa-btn wa-approve" onclick="washApprove()">✓ Approve & lock for plant</button><button class="wa-btn wa-ghost" onclick="washOpenHistory()">Past bills</button></div>`;
+    : `<div class="wa-cta"><button class="wa-btn wa-approve" onclick="washApprove()">✓ Approve & lock for plant</button><button class="wa-btn wa-ghost" onclick="washPrintInvoice()">👁 Preview</button><button class="wa-btn wa-ghost" onclick="washOpenHistory()">Past bills</button></div>`;
   box.innerHTML = head + note + table + custom + summary + totals + cta + `<div id="waHistory"></div>`;
 }
 function washOpenHistory(){
@@ -2698,7 +2700,7 @@ function washPrintInvoice(){
   if(!washBill) return;
   const rows=washBill.items.slice().sort((a,b)=>(a.sort||0)-(b.sort||0));
   const m=washSummary();
-  const rh=rows.map(it=>`<tr><td>${he(it.order_number||'custom')}</td><td>${he(it.item_name)}${it.is_rewash?' (rewash)':''}</td><td style="text-align:center">${it.qty}</td><td style="text-align:right">${(it.is_rewash?0:it.unit_price)}</td><td style="text-align:right">${Number(it.amount)||0}</td></tr>`).join('');
+  const rh=rows.map(it=>`<tr><td>${he(it.is_custom?'custom':washOrderNo(it.order_number))}</td><td>${he(it.item_name)}${it.is_rewash?' (rewash)':''}</td><td style="text-align:center">${it.qty}</td><td style="text-align:right">${(it.is_rewash?0:it.unit_price)}</td><td style="text-align:right">${Number(it.amount)||0}</td></tr>`).join('');
   const sh=Object.keys(m).sort().map(k=>`${he(k)}: ${m[k]}`).join(' &nbsp;·&nbsp; ');
   const html=`<!doctype html><html><head><meta charset="utf-8"><title>Velto Wash Plant Bill ${he(washBill.bill_date)}</title>
   <style>body{font-family:Arial,Helvetica,sans-serif;color:#111;padding:24px;max-width:720px;margin:auto}h1{font-size:20px;margin:0}.sub{color:#555;font-size:12px;margin:2px 0 16px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid #ddd;padding:6px 8px;text-align:left}th{background:#f4f4f4}tfoot td{font-weight:bold;border-top:2px solid #333}.sum{margin-top:14px;font-size:12px;background:#f7f7f7;padding:10px 12px;border-radius:6px}.appr{margin-top:18px;font-size:12px;color:#333}</style></head>
