@@ -2652,15 +2652,30 @@ function washAddCustom(){
   const it={id:washNewId(),order_number:null,item_name:name,qty,unit_price:price,amount:price*qty,is_rewash:false,is_custom:true,sort:washBill.items.length};
   washBill.items.push(it); washPersistLocal(); washSync(it); if(nm)nm.value='';if(qt)qt.value='1';if(pr)pr.value=''; renderWashBill();
 }
-function washApprove(){
+async function washApprove(){
   washEnsureBill();
   if(!washBill.items.length){ toast('Nothing to approve yet'); return; }
   if(washBill.status==='approved') return;
   if(!confirm('Approve & lock this bill for the wash plant?\n\nAfter approval nothing can be changed, and new orders go to the next bill.')) return;
+  // ensure the bill + all items are in the DB BEFORE we flip status (the lock trigger blocks item writes once approved)
+  if(sb){
+    try{
+      await washEnsureDbBill();
+      if(!washBill.id){ toast('⚠️ Could not save to database — check connection'); return; }
+      // make sure every item is written first
+      for(const it of washBill.items){ if(!it.dbid){ await washSyncNow(it); } }
+    }catch(e){ console.error('wash approve presave',e); toast('⚠️ Save failed: '+(e.message||e)); return; }
+  }
   washBill.status='approved'; washBill.approved_by_name=currentName||'Staff'; washBill.approved_at=new Date().toISOString();
   washBill.total_amount=washTotal(); washBill.item_count=washQtyTotal(); washBill.summary=washSummary();
-  washArchiveLocal(); washPersistLocal(); washSaveBill(); renderWashBill();
-  toast('Approved & locked'); setTimeout(washPrintInvoice,250);
+  washArchiveLocal(); washPersistLocal(); renderWashBill();
+  // now persist the approval and VERIFY it landed
+  if(sb){
+    const ok=await washSaveBill();
+    if(!ok){ toast('⚠️ Approved locally but DB save failed — tap ↻ and try again'); }
+    else { toast('Approved & locked ✓'); }
+  } else { toast('Approved (offline)'); }
+  setTimeout(washPrintInvoice,250);
 }
 function washArchiveLocal(){ try{ const arr=lsGet('velto_wash_archive')||[]; const snap=JSON.parse(JSON.stringify(washBill)); arr.unshift(snap); lsSet('velto_wash_archive',arr.slice(0,120)); }catch(e){} }
 function washStartNext(){ washBill=null; washEnsureBill(); washPersistLocal(); washAutofill(); renderWashBill(); }
@@ -2685,12 +2700,21 @@ async function washSync(it){
     await sb.from('wash_bills').update({total_amount:washTotal(),item_count:washQtyTotal(),summary:washSummary()}).eq('id',washBill.id);
   }catch(e){ console.warn('wash item sync',e); }
 }
+async function washSyncNow(it){
+  // awaitable, error-surfacing version used during approve
+  await washEnsureDbBill(); if(!washBill.id) throw new Error('no bill id');
+  const row={bill_id:washBill.id,order_number:it.order_number,item_name:it.item_name,qty:it.qty,unit_price:it.unit_price,amount:it.amount,is_rewash:it.is_rewash,is_custom:it.is_custom,sort:it.sort};
+  if(it.dbid){ const {error}=await sb.from('wash_bill_items').update(row).eq('id',it.dbid); if(error) throw error; }
+  else { const {data,error}=await sb.from('wash_bill_items').insert(row).select().maybeSingle(); if(error) throw error; if(data){ it.dbid=data.id; washPersistLocal(); } }
+}
 async function washDelete(it){ if(!sb||!it||!it.dbid) return; try{ await sb.from('wash_bill_items').delete().eq('id',it.dbid); }catch(e){ console.warn('wash del',e); } }
 async function washSaveBill(){
-  if(!sb||!washBill) return;
-  try{ await washEnsureDbBill(); if(!washBill.id) return;
-    await sb.from('wash_bills').update({status:washBill.status,total_amount:washBill.total_amount,item_count:washBill.item_count,summary:washBill.summary,approved_by:(currentUser?currentUser.id:null),approved_by_name:washBill.approved_by_name,approved_at:washBill.approved_at}).eq('id',washBill.id);
-  }catch(e){ console.warn('wash save',e); }
+  if(!sb||!washBill) return false;
+  try{ await washEnsureDbBill(); if(!washBill.id) return false;
+    const {error}=await sb.from('wash_bills').update({status:washBill.status,total_amount:washBill.total_amount,item_count:washBill.item_count,summary:washBill.summary,approved_by:(currentUser?currentUser.id:null),approved_by_name:washBill.approved_by_name,approved_at:washBill.approved_at}).eq('id',washBill.id);
+    if(error){ console.error('wash save error',error); toast('⚠️ DB: '+error.message); return false; }
+    return true;
+  }catch(e){ console.error('wash save',e); toast('⚠️ Save failed: '+(e.message||e)); return false; }
 }
 async function loadWashBill(){
   // populate today's qualifying order line-items, then load the SHARED current bill from DB
@@ -2782,16 +2806,18 @@ function renderWashBill(){
 }
 /* ---- mark as paid ---- */
 function washMarkPaid(){ washEnsureBill(); washMarkPaidObj(washBill, true); }
-function washMarkPaidObj(b, isCurrent){
+async function washMarkPaidObj(b, isCurrent){
   if(!b||b.status!=='approved'||b.paid) return;
   if(!confirm('Mark the bill for '+fullDate(b.bill_date)+' as paid to the wash plant?')) return;
   b.paid=true; b.paid_at=new Date().toISOString(); b.paid_by_name=currentName||'Staff';
-  washUpdateArchivePaid(b); washSavePaid(b);
+  washUpdateArchivePaid(b);
+  const ok=await washSavePaid(b);
   if(isCurrent){ washPersistLocal(); renderWashBill(); } else { renderWashHistory(); }
-  toast('Marked paid · '+fullDate(b.bill_date));
+  if(sb && !ok){ toast('⚠️ Marked locally but DB save failed — tap ↻'); }
+  else { toast('Marked paid · '+fullDate(b.bill_date)); }
 }
 function washUpdateArchivePaid(b){ try{ const arr=lsGet('velto_wash_archive')||[]; for(const x of arr){ if((b.id&&x.id===b.id)||(x.bill_date===b.bill_date&&x.approved_at===b.approved_at)){ x.paid=true; x.paid_at=b.paid_at; x.paid_by_name=b.paid_by_name; } } lsSet('velto_wash_archive',arr); }catch(e){} }
-async function washSavePaid(b){ if(!sb||!b.id) return; try{ await sb.from('wash_bills').update({paid:true,paid_at:b.paid_at,paid_by_name:b.paid_by_name}).eq('id',b.id); }catch(e){ console.warn('wash paid save',e); } }
+async function washSavePaid(b){ if(!sb||!b.id) return false; try{ const {error}=await sb.from('wash_bills').update({paid:true,paid_at:b.paid_at,paid_by_name:b.paid_by_name}).eq('id',b.id); if(error){ console.error('wash paid',error); return false; } return true; }catch(e){ console.error('wash paid save',e); return false; } }
 /* ---- month-grouped history ---- */
 let _washHistory=null, _washHistOpen=false, _washHistErr=null;
 async function washLoadHistory(){
