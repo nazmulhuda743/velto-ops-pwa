@@ -2684,11 +2684,15 @@ function washStartNext(){ washBill=null; washEnsureBill(); washPersistLocal(); w
 async function washEnsureDbBill(){
   if(!sb||!washBill) return;
   if(washBill.id) return;
-  try{
-    let {data}=await sb.from('wash_bills').select('*').eq('status','draft').eq('bill_date',washToday()).order('created_at',{ascending:false}).limit(1).maybeSingle();
-    if(!data){ const r=await sb.from('wash_bills').insert({bill_date:washToday(),status:'draft'}).select().maybeSingle(); data=r.data; }
-    if(data){ washBill.id=data.id; washPersistLocal(); }
-  }catch(e){ console.warn('wash bill ensure',e); }
+  // find an existing draft for today (use limit(1) array, not maybeSingle — avoids error if >1 draft exists)
+  const sel=await sb.from('wash_bills').select('id').eq('status','draft').eq('bill_date',washToday()).order('created_at',{ascending:false}).limit(1);
+  if(sel.error){ console.error('wash draft lookup',sel.error); toast('⚠️ DB read: '+sel.error.message); throw sel.error; }
+  if(sel.data && sel.data.length){ washBill.id=sel.data[0].id; washPersistLocal(); return; }
+  // none exists — create one, and CHECK the error
+  const ins=await sb.from('wash_bills').insert({bill_date:washToday(),status:'draft'}).select('id').maybeSingle();
+  if(ins.error){ console.error('wash bill insert',ins.error); toast('⚠️ DB insert: '+ins.error.message); throw ins.error; }
+  if(ins.data){ washBill.id=ins.data.id; washPersistLocal(); }
+  else { throw new Error('insert returned no row'); }
 }
 async function washSync(it){
   if(!sb||!washBill||washBill.status==='approved') return;
