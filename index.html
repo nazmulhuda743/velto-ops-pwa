@@ -2676,6 +2676,8 @@ async function washSync(it){
     const row={bill_id:washBill.id,order_number:it.order_number,item_name:it.item_name,qty:it.qty,unit_price:it.unit_price,amount:it.amount,is_rewash:it.is_rewash,is_custom:it.is_custom,sort:it.sort};
     if(it.dbid){ await sb.from('wash_bill_items').update(row).eq('id',it.dbid); }
     else { const {data}=await sb.from('wash_bill_items').insert(row).select().maybeSingle(); if(data){ it.dbid=data.id; washPersistLocal(); } }
+    // keep the header row current so other devices always see the latest total + count
+    await sb.from('wash_bills').update({total_amount:washTotal(),item_count:washQtyTotal(),summary:washSummary()}).eq('id',washBill.id);
   }catch(e){ console.warn('wash item sync',e); }
 }
 async function washDelete(it){ if(!sb||!it||!it.dbid) return; try{ await sb.from('wash_bill_items').delete().eq('id',it.dbid); }catch(e){ console.warn('wash del',e); } }
@@ -2786,12 +2788,24 @@ function washMarkPaidObj(b, isCurrent){
 function washUpdateArchivePaid(b){ try{ const arr=lsGet('velto_wash_archive')||[]; for(const x of arr){ if((b.id&&x.id===b.id)||(x.bill_date===b.bill_date&&x.approved_at===b.approved_at)){ x.paid=true; x.paid_at=b.paid_at; x.paid_by_name=b.paid_by_name; } } lsSet('velto_wash_archive',arr); }catch(e){} }
 async function washSavePaid(b){ if(!sb||!b.id) return; try{ await sb.from('wash_bills').update({paid:true,paid_at:b.paid_at,paid_by_name:b.paid_by_name}).eq('id',b.id); }catch(e){ console.warn('wash paid save',e); } }
 /* ---- month-grouped history ---- */
-let _washHistory=null, _washHistOpen=false;
+let _washHistory=null, _washHistOpen=false, _washHistErr=null;
 async function washLoadHistory(){
-  let bills=[];
-  if(sb){ try{ const {data}=await sb.from('wash_bills').select('*').eq('status','approved').order('bill_date',{ascending:false}); if(data&&data.length){ bills=data.map(r=>({id:r.id,bill_date:r.bill_date,status:r.status,total_amount:Number(r.total_amount)||0,item_count:r.item_count||0,summary:r.summary,paid:!!r.paid,paid_by_name:r.paid_by_name,approved_by_name:r.approved_by_name,approved_at:r.approved_at})); } }catch(e){ console.warn('wash hist',e); } }
-  if(!bills.length){ const arr=lsGet('velto_wash_archive')||[]; bills=arr.map(x=>({id:x.id,bill_date:x.bill_date,status:x.status,total_amount:(x.total_amount!=null?x.total_amount:washTotalOf(x.items)),item_count:x.item_count||0,summary:x.summary,paid:!!x.paid,paid_by_name:x.paid_by_name,approved_by_name:x.approved_by_name,approved_at:x.approved_at,items:x.items})); }
-  _washHistory=bills; return bills;
+  _washHistErr=null;
+  if(sb){
+    try{
+      const {data,error}=await sb.from('wash_bills').select('*').eq('status','approved').order('bill_date',{ascending:false});
+      if(error){ _washHistErr='DB error: '+error.message; console.warn('wash hist DB',error); }
+      else if(data){
+        _washHistory=data.map(r=>({id:r.id,bill_date:r.bill_date,status:r.status,total_amount:Number(r.total_amount)||0,item_count:r.item_count||0,summary:r.summary,paid:!!r.paid,paid_by_name:r.paid_by_name,approved_by_name:r.approved_by_name,approved_at:r.approved_at}));
+        return _washHistory;
+      }
+    }catch(e){ _washHistErr='Load failed: '+e.message; console.warn('wash hist',e); }
+  }
+  // offline fallback — only useful for the device that created the bills
+  const arr=lsGet('velto_wash_archive')||[];
+  _washHistory=arr.map(x=>({id:x.id,bill_date:x.bill_date,status:x.status,total_amount:(x.total_amount!=null?x.total_amount:washTotalOf(x.items)),item_count:x.item_count||0,summary:x.summary,paid:!!x.paid,paid_by_name:x.paid_by_name,approved_by_name:x.approved_by_name,approved_at:x.approved_at,items:x.items}));
+  if(_washHistory.length && !sb) _washHistErr='Offline — showing local data only';
+  return _washHistory;
 }
 function washToggleHistory(force){
   _washHistOpen = (force===true)?true:!_washHistOpen;
@@ -2803,8 +2817,9 @@ function washToggleHistory(force){
 }
 function renderWashHistory(){
   const box=document.getElementById('waHistory'); if(!box) return;
+  if(_washHistErr){ box.innerHTML=`<div class="wb-hist-empty" style="color:#f2849b">⚠️ ${he(_washHistErr)}</div>`; }
   const bills=_washHistory||[];
-  if(!bills.length){ box.innerHTML='<div class="wb-hist-empty">No approved bills yet.</div>'; return; }
+  if(!bills.length){ box.innerHTML=(box.innerHTML||'')+'<div class="wb-hist-empty">No approved bills yet.</div>'; return; }
   const byMonth={}; bills.forEach((b,i)=>{ const mo=(b.bill_date||'').slice(0,7); (byMonth[mo]=byMonth[mo]||[]).push({b,i}); });
   let html='';
   for(const mo of Object.keys(byMonth).sort().reverse()){
