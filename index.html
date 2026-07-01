@@ -1484,7 +1484,12 @@ function openScreen(id,title){
   if(id==='s-customers')loadCustomers();
   if(id==='s-deliveries')loadDeliveries();
   if(id==='s-reorder'){ renderReorder(); loadReorderActions().then(()=>renderReorder()); if(!custData.length && typeof loadCustomers==='function'){ try{ const _p=loadCustomers(); if(_p&&_p.then) _p.then(()=>renderReorder()); }catch(e){} } if(!_dashboardData && typeof renderHomeStats==='function') renderHomeStats().then(()=>renderReorder()); }
-  if(id==='s-washbill'){ renderWashBill(); loadWashBill().then(()=>renderWashBill()); }
+  if(id==='s-washbill'){
+    // show loading immediately, then replace with real DB state
+    const box=document.getElementById('washBody');
+    if(box) box.innerHTML='<div style="padding:32px;text-align:center;color:var(--tx-3)">Loading…</div>';
+    loadWashBill().then(()=>renderWashBill()).catch(()=>renderWashBill());
+  }
 }
 
 // ===== Customers tab =====
@@ -2728,9 +2733,9 @@ function subscribeWashBill(){
   if(!sb || _washChannel) return;
   try{
     _washChannel=sb.channel('velto-wash-'+Date.now())
-      .on('postgres_changes',{event:'*',schema:'public',table:'wash_bill_items'}, washRefreshFromRealtime)
-      .on('postgres_changes',{event:'*',schema:'public',table:'wash_bills'}, washRefreshFromRealtime)
-      .subscribe();
+      .on('postgres_changes',{event:'*',schema:'public',table:'wash_bill_items'}, e=>{ console.log('[wash-sync] item change',e.eventType); washRefreshFromRealtime(); })
+      .on('postgres_changes',{event:'*',schema:'public',table:'wash_bills'}, e=>{ console.log('[wash-sync] bill change',e.eventType); washRefreshFromRealtime(); })
+      .subscribe(status=>{ console.log('[wash-sync] channel status',status); });
   }catch(e){ console.warn('wash realtime',e); }
 }
 
@@ -2747,7 +2752,7 @@ function renderWashBill(){
   const b=washBill, approved=b.status==='approved';
   const rows=b.items.slice().sort((x,y)=>(x.sort||0)-(y.sort||0));
   const hero=`<div class="wb-hero">
-    <div class="wb-hero-top"><span class="wb-hero-lbl">WASH PLANT BILL</span>${washStatusPill(b)}</div>
+    <div class="wb-hero-top"><span class="wb-hero-lbl">WASH PLANT BILL</span><div style="display:flex;gap:8px;align-items:center">${washStatusPill(b)}<button onclick="loadWashBill().then(()=>renderWashBill())" style="background:none;border:none;color:var(--tx-3);font-size:16px;padding:2px 4px;cursor:pointer" title="Refresh from database">↻</button></div></div>
     <div class="wb-hero-date">${fullDate(b.bill_date)}</div>
     <div class="wb-hero-amt"><span id="waTotal">৳${washTotal().toLocaleString()}</span><span class="wb-hero-sub"> · <span id="waCount">${washQtyTotal()}</span> items</span></div>
     <div class="wb-hero-note">${approved?(b.paid?('Paid · '+he(b.paid_by_name||'')):('Locked by '+he(b.approved_by_name||'Staff')+' · '+relDate(b.approved_at))):'Fills automatically from today’s wash &amp; dry-clean orders'}</div>
