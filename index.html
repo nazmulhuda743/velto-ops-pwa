@@ -3442,6 +3442,120 @@ function roCall(btn){ if(!btn)return; window.location.href='tel:+'+roIntl(btn.ge
 const GOOGLE_REVIEW_URL='https://g.page/r/REPLACE_WITH_VELTO_GOOGLE_REVIEW_LINK/review';
 function reviewMsg(name){ const n=roFirstName(name); const link=/REPLACE_WITH/.test(GOOGLE_REVIEW_URL)?'Just search "Velto Laundry Uttara" on Google — the review button is right there.':GOOGLE_REVIEW_URL; return `That genuinely made our day, ${n}! 🙏 If you have a moment, a quick Google review would mean the world to us — and it helps other people in Uttara discover Velto. It takes just a few seconds:\n${link}\nThank you for being part of Velto.`; }
 function roReview(btn){ if(!btn)return; waOpen(btn.getAttribute('data-phone')||'', reviewMsg(btn.getAttribute('data-name')||'')); }
+
+/* ==================== REVENUE-AT-RISK ENGINE (v63) ====================
+   Turns lifecycle stage + each customer's PERSONAL cadence into a churn
+   probability and a ৳ figure, so the follow-up list can be sorted by the
+   money that is actually bleeding out today — not just the oldest stage.
+   Pure client-side: uses fields the reorder engine already computes. */
+function roRisk(c){
+  if(!c) return {p:0,atRisk:0,band:'none',over:0};
+  const gap=Number(c.gap)||0, days=(c.days==null?0:Number(c.days));
+  const cyc=gap>0?gap:(c.repeat?30:14);              // personal rhythm, sane fallback
+  const over=cyc>0?days/cyc:1;                        // 1.0 = on time, 2.0 = a full cycle late
+  let p;
+  if(over<=1) p=0.04+0.12*over;                       // still inside their cycle — low
+  else p=0.16+0.30*(over-1);                          // past due — climbs every extra cycle
+  // stage floors/ceilings (the engine already knows the lifecycle truth)
+  if(c.stage==='winback') p=Math.max(p,0.78);
+  else if(c.stage==='overdue') p=Math.max(p,0.52);
+  else if(c.stage==='lost') p=0.95;
+  else if(c.stage==='loyal'||c.stage==='thank') p=Math.min(p,0.22);
+  else if(c.stage==='inflight'||c.stage==='converted') p=0.02;
+  if(!c.repeat) p+=0.12;                              // one-and-done churn far harder than repeats
+  const h=c.history||[];                              // logged-outcome signal
+  if(h.length){
+    const txt=h.map(a=>((a.outcome||'')+' '+(a.note||'')).toLowerCase()).join(' ');
+    if(/complain|refund|damage|angry|ruined|not interested|wrong number/.test(txt)) p+=0.15;
+    const fresh=h[0]&&(Date.now()-new Date(h[0].created_at).getTime())<10*86400000;
+    if(fresh && /pickup booked|replied|coming|agreed|will|wants reminder/.test(txt)) p-=0.22;
+  }
+  p=Math.max(0.01,Math.min(0.98,p));
+  const value=Number(c.potential||c.avg||c.value)||0;
+  const atRisk=Math.round(p*value);
+  const band=p>=0.66?'high':p>=0.4?'med':'low';
+  return {p,atRisk,band,over};
+}
+function roRiskPill(c){
+  const r=c.risk||roRisk(c);
+  if(r.band==='low'||r.band==='none'||!r.atRisk) return '';
+  const col=r.band==='high'?'var(--danger,#ff5c6c)':'var(--amber,#ffb020)';
+  return `<span class="ro-risk-pill" title="Estimated revenue at risk if they don't come back" style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:800;color:${col};border:1px solid ${col};border-radius:999px;padding:2px 8px;white-space:nowrap">🩸 ৳${r.atRisk.toLocaleString()} · ${Math.round(r.p*100)}%</span>`;
+}
+
+/* ==================== AI COPILOT (v63) ====================
+   Drafts a genuinely personal WhatsApp message per customer via the
+   Supabase edge function `ai-copilot` (OpenAI). Falls back to the proven
+   templates if the function is missing, errors, or the device is offline —
+   so tapping ✨ AI is NEVER a dead end. */
+const AI_COPILOT_FN='ai-copilot';
+let AI_LANG='auto';   // 'auto' | 'en' | 'bn'
+let _aiCtx=null;
+function aiEnsureOverlay(){
+  if(document.getElementById('aiOverlay')) return;
+  const d=document.createElement('div');
+  d.id='aiOverlay';
+  d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:none;align-items:flex-end;justify-content:center;z-index:9999';
+  d.addEventListener('click',e=>{ if(e.target===d) aiClose(); });
+  d.innerHTML=`<div style="background:var(--card,#141a2b);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom))">
+    <div id="aiTitle" style="font-weight:800;font-size:15px;color:var(--tx,#eaf0ff);margin-bottom:4px"></div>
+    <div id="aiMeta" style="font-size:11.5px;color:var(--tx-3,#8b94ad);margin-bottom:12px;line-height:1.45"></div>
+    <textarea id="aiText" maxlength="900" style="width:100%;min-height:150px;box-sizing:border-box;background:var(--bg-1,#0e1424);color:var(--tx,#eaf0ff);border:1px solid var(--bd,#26304a);border-radius:12px;padding:13px 14px;font-size:14px;line-height:1.5;resize:vertical"></textarea>
+    <div style="display:flex;gap:9px;margin-top:14px">
+      <button onclick="aiClose()" style="flex:0 0 auto;background:var(--bg-1,#0e1424);color:var(--tx-2,#aab4cc);border:1px solid var(--bd,#26304a);border-radius:12px;padding:13px 16px;font-size:14px;font-weight:700">Cancel</button>
+      <button id="aiRegen" onclick="aiRegen()" style="flex:0 0 auto;background:var(--bg-1,#0e1424);color:var(--purple,#a78bfa);border:1px solid var(--bd,#26304a);border-radius:12px;padding:13px 14px;font-size:14px;font-weight:700">↻ Redraft</button>
+      <button onclick="aiSend()" style="flex:1;background:#25D366;color:#052b13;border:none;border-radius:12px;padding:13px 18px;font-size:14px;font-weight:800">Send on WhatsApp</button>
+    </div></div>`;
+  document.body.appendChild(d);
+}
+function aiShow(title,meta,loading,msg){
+  aiEnsureOverlay();
+  document.getElementById('aiTitle').textContent=title;
+  document.getElementById('aiMeta').textContent=meta||'';
+  const t=document.getElementById('aiText');
+  if(loading){ t.value='Thinking…'; t.disabled=true; } else { t.value=msg||''; t.disabled=false; }
+  const rg=document.getElementById('aiRegen'); if(rg) rg.style.display=loading?'none':'';
+  document.getElementById('aiOverlay').style.display='flex';
+}
+function aiClose(){ const o=document.getElementById('aiOverlay'); if(o)o.style.display='none'; _aiCtx=null; }
+function aiSend(){
+  if(!_aiCtx) return;
+  const t=document.getElementById('aiText'); const msg=(t&&t.value||'').trim();
+  if(!msg){ toast('Nothing to send'); return; }
+  waOpen(_aiCtx.phone,msg); aiClose(); toast('Log what happens below 👇 so the team knows');
+}
+function aiDraft(btn){
+  if(!btn) return;
+  _aiCtx={ phone:btn.getAttribute('data-phone')||'', name:btn.getAttribute('data-name')||'',
+    kind:btn.getAttribute('data-kind')||'nudge', vip:btn.getAttribute('data-vip')==='1',
+    ord:btn.getAttribute('data-ord')||'' };
+  aiShow('✨ Drafting a personal message…','',true);
+  aiRun(_aiCtx,false);
+}
+function aiRegen(){ if(!_aiCtx) return; aiShow('✨ Redrafting…','',true); aiRun(_aiCtx,true); }
+async function aiRun(ctx,regen){
+  let msg=null, meta='';
+  try{
+    if(sb && sb.functions && typeof sb.functions.invoke==='function'){
+      let c=null; try{ const r=computeReorder(); c=(r._all||[]).find(x=>normPhone(x.phone)===normPhone(ctx.phone))||null; }catch(e){}
+      const payload={ name:ctx.name, stage:ctx.kind, lang:AI_LANG, vip:ctx.vip,
+        orderCount:c?c.orderCount:0, lastValue:c?c.value:0, ltv:c?c.ltv:0,
+        daysSince:c?c.days:null, cadence:c?c.gap:null, zone:c?c.zone:'',
+        services:c?(c.services||[]).slice(0,4):[],
+        lastNote:(c&&c.history&&c.history[0])?(c.history[0].note||c.history[0].outcome||''):'',
+        riskPct:(c&&c.risk)?Math.round(c.risk.p*100):null, variety:regen?1:0 };
+      const {data,error}=await sb.functions.invoke(AI_COPILOT_FN,{body:payload});
+      if(error) throw error;
+      if(data&&data.message){ msg=String(data.message).trim(); if(data.sendWindow) meta='📆 Suggested send time: '+data.sendWindow; }
+    }
+  }catch(e){ console.warn('ai-copilot:',e); }
+  if(!msg){
+    let v=null; if(ctx.kind==='nudge'||ctx.kind==='winback'){ v=roVariantOf(ctx.phone); }
+    msg=reorderMsg(ctx.kind,ctx.name,ctx.vip,ctx.ord,v);
+    meta=sb?'AI copilot unavailable — smart template loaded. Edit anything, then send.':'Offline — template loaded. Edit anything, then send.';
+  }
+  aiShow('✨ AI draft — edit anything, then send',meta,false,msg);
+}
 // Outcome / completed tracking (per-device for now; shared table is the next step)
 // ---- Shared follow-up log (reorder_actions table) so the whole team sees outcomes ----
 let _roChannel=null;
@@ -4210,9 +4324,13 @@ function computeReorder(){
     else if(c.stage!=='inflight' && c.orderCount>=5 && c.orderCount%5===0 && c.days!=null && c.days<=10){ c.stage='loyal'; c.milestone=c.orderCount; }
   }
   const out={inflight:[],scheduled:[],loyal:[],thank:[],nudge:[],standing:[],overdue:[],winback:[],holdout:[],converted:[],_all:custs};
-  let repeatCount=0;
+  let repeatCount=0, revenueAtRisk=0, atRiskCount=0;
   for(const c of custs){
     if(c.repeat) repeatCount++;
+    c.risk=roRisk(c);
+    if(['nudge','overdue','winback','scheduled'].includes(c.stage) && c.risk.band!=='low' && c.risk.atRisk>0 && !roDoneInfo(c.phone,c.stage)){
+      revenueAtRisk+=c.risk.atRisk; atRiskCount++;
+    }
     if(c.stage==='converted') out.converted.push(c);
     else if(out[c.stage]) out[c.stage].push(c);
   }
@@ -4228,7 +4346,7 @@ function computeReorder(){
   const toReach=out.scheduled.length+out.loyal.length+out.thank.length+out.nudge.length+out.overdue.length+out.winback.length;
   const completed=roCompletedToday();
   const convRate=custs.length?Math.round(repeatCount/custs.length*100):0;
-  out._m={toReach,completed,remaining:Math.max(0,toReach-completed),revenueWaiting,convRate,repeatCount,anyCount:custs.length};
+  out._m={toReach,completed,remaining:Math.max(0,toReach-completed),revenueWaiting,convRate,repeatCount,anyCount:custs.length,revenueAtRisk,atRiskCount};
   out._founder=out.nudge.concat(out.overdue).filter(c=>c.priority==='HIGH').sort((a,b)=>b.value-a.value).slice(0,5);
   return out;
 }
@@ -4261,7 +4379,7 @@ const PR_BADGE={HIGH:'🔥 HIGH',NORMAL:'🟡 NORMAL',LOW:'⚪ LOW'};
 const STAGE_PILL={scheduled:['📅 SCHEDULED','sp-sched'],loyal:['🎉 LOYAL','sp-loyal'],thank:['THANK YOU','sp-thank'],nudge:['DAY 7–8','sp-nudge'],standing:['STANDING','sp-standing'],overdue:['OVERDUE','sp-overdue'],winback:['WIN-BACK','sp-winback']};
 function monthLabel(mo){ const [y,m]=mo.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m,10)-1]+" '"+y.slice(2); }
 const STAGE_RANK={scheduled:-2,loyal:-1,overdue:0,nudge:1,thank:2,standing:3,winback:4};
-function roScore(c){ if(roDoneInfo(c.phone,c.stage)) return -1e12; const rank=(c.stage in STAGE_RANK)?STAGE_RANK[c.stage]:9; const prio=c.priority==='HIGH'?2:c.priority==='LOW'?0:1; return (9-rank)*1e7 + prio*1e4 + (Number(c.value)||0); }
+function roScore(c){ if(roDoneInfo(c.phone,c.stage)) return -1e12; const rank=(c.stage in STAGE_RANK)?STAGE_RANK[c.stage]:9; const prio=c.priority==='HIGH'?2:c.priority==='LOW'?0:1; const money=Math.min(9999,(c.risk?c.risk.atRisk:0)||(Number(c.value)||0)); return (9-rank)*1e7 + prio*1e4 + money; }
 
 
 /* ---- true lift: contacted push-lanes vs holdout organic ---- */
@@ -4349,6 +4467,7 @@ function roCard(c){
     const _histLine = _h.length ? `<div class="ro-hist${_recent?' ro-hist-hot':''}">${_recent?'⚠️':'📋'} <b>${_who}</b> contacted them <b>${_whenTxt}</b> — ${he(_h[0].outcome)}${_h[0].note?` · “${he(_h[0].note)}”`:''}${_h.length>1?` · ${_h.length} contacts total`:''}${_cv?` · <span class="ro-conv">✓ came back in ${_cv.days}d (${he(_cv.order)})</span>`:''}${_recent?` — <b>check before calling again</b>`:''}</div>` : '';
     body=`${_sched}${_loyal}${_msHtml}${_histLine}<div class="ro-nba${c.nba.escalate?' escalate':''}">${c.nba.escalate?'⚠️':'🧠'} <b>${c.nba.action}</b> — ${he(c.nba.reason)}${c.nba.success?` <span class="ro-est">est ${c.nba.success}%</span>`:''}</div>
       <div class="ro-act">
+        <button class="ro-b ro-b-ai" ${d} onclick="aiDraft(this)" title="AI writes a personal message from their history" style="background:linear-gradient(135deg,#7c5cff,#a78bfa);color:#fff;border:none">✨ AI</button>
         <button class="ro-b ro-b-wa" ${d} onclick="roMessage(this)">WhatsApp</button>
         <button class="ro-b ro-b-call" data-phone="${he(c.phone)}" onclick="roCall(this)">Call</button>
         <button class="ro-b ro-b-ghost" onclick="openDetail('${c.orderNum}')">Order</button>
@@ -4358,8 +4477,9 @@ function roCard(c){
       <div class="ro-note"><input class="ro-note-input" type="text" placeholder="What you did + what they said — e.g. Called, no answer / wants pickup Friday" maxlength="280"><button class="ro-note-save" data-phone="${he(c.phone)}" data-stage="${stage}" data-order="${he(c.orderNum)}" onclick="roSaveNote(this)">Log</button></div>
       <div class="ro-when-row">Next follow-up: <select class="ro-when"><option value="1">tomorrow</option><option value="3" selected>in 3 days</option><option value="7">in 1 week</option><option value="14">in 2 weeks</option><option value="30">in 1 month</option></select></div>`;
   }
+  const riskPill=done?'':roRiskPill(c);
   return `<div class="ro-card${done?' is-done':''}${stage==='overdue'?' is-overdue':''}">
-    <div class="ro-card-h"><div class="ro-name">${he(c.name)}</div>${pill}</div>
+    <div class="ro-card-h"><div class="ro-name">${he(c.name)}</div><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${riskPill}${pill}</div></div>
     <div class="ro-meta">${he(meta)}</div>
     ${body}
   </div>`;
@@ -4400,6 +4520,7 @@ function renderReorder(){
         <div class="ro-bar"><i style="width:${Math.min(100,Math.round(convPct/(convTarget||60)*100))}%"></i></div>
         <div class="ro-conv-sub">${convN} of ${convD} ${convUnit} · target ${convTarget}%</div>
       </div>
+      ${m.revenueAtRisk>0?`<div class="ro-riskline" style="margin-top:11px;padding:11px 13px;border:1px solid var(--danger,#ff5c6c);border-radius:12px;background:rgba(255,92,108,.08);font-size:12px;line-height:1.5;color:var(--tx-2,#aab4cc)">🩸 <b style="color:var(--danger,#ff5c6c)">৳${m.revenueAtRisk.toLocaleString()}</b> is slipping away today across <b>${m.atRiskCount}</b> at-risk customer${m.atRiskCount===1?'':'s'} — the list below is sorted so the biggest bleed is on top.</div>`:''}
     </div>`;
   const stages=[['In progress',r.inflight.length],['Thank you',r.thank.length],['Day 7–8',r.nudge.length],['Standing',r.standing.length],['Win-back',r.winback.length]];
   const pipe=`<div class="ro-pipe">${stages.map((s,i)=>`<div class="ro-pstage"><div class="ro-pcount">${s[1]}</div><div class="ro-plabel">${s[0]}</div></div>${i<stages.length-1?'<div class="ro-parrow">›</div>':''}`).join('')}</div>`;
