@@ -2474,12 +2474,19 @@ function _gradBar(doc,x,y,w,h){
     else{const u=(t-0.5)/0.5;c=[_lerp(st[1][0],st[2][0],u),_lerp(st[1][1],st[2][1],u),_lerp(st[1][2],st[2][2],u)];}
     doc.setFillColor(c[0],c[1],c[2]);doc.rect(x+i*seg,y,seg+0.35,h,'F');}
 }
-function _glow(doc,cx,cy,r,rgb,base){
-  if(!doc.GState){return;}
-  try{doc.saveGraphicsState();
-  [[1.0,0.08],[0.74,0.13],[0.5,0.20],[0.3,0.28]].forEach(function(L){
-    doc.setGState(new doc.GState({opacity:L[1]*base}));doc.setFillColor(rgb[0],rgb[1],rgb[2]);doc.ellipse(cx,cy,r*L[0],r*L[0],'F');});
-  doc.restoreGraphicsState();}catch(e){try{doc.restoreGraphicsState();}catch(_){} }
+function _glow(doc,cx,cy,r,rgb,base,bg){
+  // Soft radial glow WITHOUT PDF transparency: concentric solid ellipses whose
+  // colour is pre-blended from the background toward the glow colour. This is
+  // the same viewer-proof technique as _gradBar — the earlier GState/opacity
+  // version rendered in the in-app preview but dropped out (or turned into solid
+  // blobs) in the downloaded PDF on viewers that ignore soft transparency.
+  bg=bg||[11,16,32];            // header + balance card are both navy
+  const N=16;
+  for(let i=0;i<N;i++){ const f=i/(N-1);
+    const rad=r*(1-0.86*f);                       // large (dim, outer) → small (bright, inner)
+    const a=Math.min(1, Math.pow(f,1.3)*base*0.95 + 0.02);
+    doc.setFillColor(_lerp(bg[0],rgb[0],a),_lerp(bg[1],rgb[1],a),_lerp(bg[2],rgb[2],a));
+    doc.ellipse(cx,cy,rad,rad,'F'); }
 }
 async function stainsForInvoice(s){
   if(!s||s.stains!==undefined||!s.dbid||!sb) return (s&&s.stains&&s.stains.length)?true:false;
@@ -4610,32 +4617,42 @@ function roCard(c){
   } else {
     const msgKind = (stage==='scheduled')?'nudge':stage;
     const d=`data-name="${he(c.name)}" data-phone="${he(c.phone)}" data-kind="${msgKind}" data-ord="${c.milestone||c.orderCount||0}" data-vip="${c.priority==='HIGH'?1:0}"`;
-    const reviewBtn = stage==='thank'?`<button class="ro-b ro-b-review" data-name="${he(c.name)}" data-phone="${he(c.phone)}" onclick="roReview(this)" title="Send when they reply 5★">5★ Review</button>`:'';
-    const _sched = stage==='scheduled'?`<div class="ro-sched">📅 You scheduled this for today${c.lastNote?` — last time: “${he(c.lastNote)}”`:''}</div>`:'';
-    const _loyal = stage==='loyal'?`<div class="ro-loyal">🎉 ${c.milestone}th order — a loyal customer. Thank them personally and make it genuine.</div>`:'';
+    const first=he(roFirstName(c.name));
     const _h=c.history||[];
-    const _ms=circleMilestone(c);
-    const _msHtml=_ms?`<div class="ro-mile">🎖 Just reached <b>${_ms.toUpperCase()}</b> — tier-up message unlocks at Circle launch (calibration + clean week)</div>`:'';
     const _cv=_h.map(x=>roConvOf(x)).find(Boolean);
     const _lastDays=_h[0]?Math.floor((Date.now()-new Date(_h[0].created_at))/86400000):null;
-    const _recent=(_lastDays!=null && _lastDays<10);
     const _who=_h[0]&&_h[0].created_by_name?he(roFirstName(_h[0].created_by_name)):'someone';
-    const _whenTxt=_lastDays===0?'today':_lastDays===1?'yesterday':_lastDays+' days ago';
-    const _histLine = _h.length ? `<div class="ro-hist${_recent?' ro-hist-hot':''}">${_recent?'⚠️':'📋'} <b>${_who}</b> contacted them <b>${_whenTxt}</b> — ${he(_h[0].outcome)}${_h[0].note?` · “${he(_h[0].note)}”`:''}${_h.length>1?` · ${_h.length} contacts total`:''}${_cv?` · <span class="ro-conv">✓ came back in ${_cv.days}d (${he(_cv.order)})</span>`:''}${_recent?` — <b>check before calling again</b>`:''}</div>` : '';
-    const _newCaution = c.isNew ? `<div class="ro-newcust" style="font-size:11.5px;line-height:1.45;margin-bottom:9px;padding:8px 10px;border-radius:9px;background:rgba(96,165,250,.10);border:1px solid rgba(96,165,250,.4);color:var(--tx-2,#aab4cc)">🆕 <b style="color:var(--tx,#eaf0ff)">First-time customer.</b> Winning their 2nd order is the highest-value move you'll make today — be warm and personal, no hard sell.</div>` : '';
-    const fbBtn = `<button class="ro-b" data-name="${he(c.name)}" data-phone="${he(c.phone)}" data-order="${he(c.orderNum)}" onclick="fbOpen(this)" title="Log their rating / what they said" style="background:rgba(255,176,32,.14);color:var(--amber,#ffb020);border:1px solid rgba(255,176,32,.34)">⭐ Feedback</button>`;
-    body=`${roPlanHtml(c)}${_newCaution}${_sched}${_loyal}${_msHtml}${_histLine}<div class="ro-nba${c.nba.escalate?' escalate':''}">${c.nba.escalate?'⚠️':'🧠'} <b>${c.nba.action}</b> — ${he(c.nba.reason)}${c.nba.success?` <span class="ro-est">est ${c.nba.success}%</span>`:''}</div>
-      <div class="ro-act">
-        <button class="ro-b ro-b-ai" ${d} onclick="aiDraft(this)" title="AI writes a personal message from their history" style="background:linear-gradient(135deg,#7c5cff,#a78bfa);color:#fff;border:none">✨ AI</button>
-        <button class="ro-b ro-b-wa" ${d} onclick="roMessage(this)">WhatsApp</button>
-        <button class="ro-b ro-b-call" data-phone="${he(c.phone)}" onclick="roCall(this)">Call</button>
-        <button class="ro-b ro-b-ghost" onclick="openDetail('${c.orderNum}')">Order</button>
-        ${fbBtn}
-        ${reviewBtn}
-      </div>
-      <div class="ro-log-label">Log this follow-up (required to mark done):</div>
-      <div class="ro-note"><input class="ro-note-input" type="text" placeholder="What you did + what they said — e.g. Called, no answer / wants pickup Friday" maxlength="280"><button class="ro-note-save" data-phone="${he(c.phone)}" data-stage="${stage}" data-order="${he(c.orderNum)}" onclick="roSaveNote(this)">Log</button></div>
-      <div class="ro-when-row">Next follow-up: <select class="ro-when"><option value="1">tomorrow</option><option value="3" selected>in 3 days</option><option value="7">in 1 week</option><option value="14">in 2 weeks</option><option value="30">in 1 month</option></select></div>`;
+    const _whenTxt=_lastDays===0?'today':_lastDays===1?'yesterday':_lastDays+'d ago';
+    // RULE 02+05 — one muted context line replaces the stack of coloured boxes
+    const ctx=[];
+    if(c.isNew) ctx.push('🆕 first-time — protect the 2nd order');
+    if(stage==='scheduled') ctx.push('📅 you scheduled today'+(c.lastNote?` · “${he(c.lastNote)}”`:''));
+    else if(stage==='loyal') ctx.push(`🎉 ${c.milestone}th order — loyal regular`);
+    if(_h.length) ctx.push(`${_who} ${_whenTxt}: ${he(_h[0].outcome)}${_cv?` · ✓ back in ${_cv.days}d`:''}${_h.length>1?` · ${_h.length} contacts`:''}`);
+    const ctxLine = ctx.length?`<div style="font-size:11px;color:var(--tx-3,#79839e);line-height:1.5;margin:1px 0 9px">${ctx.slice(0,2).join('  ·  ')}</div>`:'';
+    // RULE 02+03 — ONE reason (the NBA); colour only when urgent
+    const hot=!!c.nba.escalate;
+    const reason=`<div style="font-size:12.5px;line-height:1.5;padding:9px 11px;border-radius:10px;margin-bottom:11px;${hot?'background:rgba(255,92,108,.09);border:1px solid rgba(255,92,108,.4);color:#f5c1c8':'background:var(--bg-2,#0e1424);border:1px solid var(--bd,#26304a);color:var(--tx-2,#aab4cc)'}">${hot?'⚠️':'🧠'} <b style="color:var(--tx,#eaf0ff)">${he(c.nba.action)}</b> — ${he(c.nba.reason)}${c.nba.success?` <span class="ro-est">~${c.nba.success}%</span>`:''}</div>`;
+    // RULE 01 — ONE primary action; the rest shrink to icons
+    const wantCall=(c.nba.action==='Call')||hot;
+    const priBg = wantCall?(hot?'#ff5c6c':'#2b7bff'):'linear-gradient(135deg,#7c5cff,#a78bfa)';
+    const priCol = (wantCall&&hot)?'#3a0a0f':'#fff';
+    const primary = wantCall
+      ? `<button data-name="${he(c.name)}" data-phone="${he(c.phone)}" onclick="roCall(this)" style="width:100%;padding:13px;border:none;border-radius:12px;font-size:14.5px;font-weight:800;color:${priCol};background:${priBg}">📞 Call ${first}</button>`
+      : `<button ${d} onclick="aiDraft(this)" style="width:100%;padding:13px;border:none;border-radius:12px;font-size:14.5px;font-weight:800;color:#fff;background:${priBg}">✨ Message ${first}</button>`;
+    const mini='background:var(--card-2,#1b2338);border:1px solid var(--bd,#26304a);color:var(--tx-2,#aab4cc);border-radius:10px;padding:9px 0;font-size:15px;flex:1';
+    const minis=[];
+    if(wantCall){ minis.push(`<button ${d} onclick="aiDraft(this)" title="AI message" style="${mini}">✨</button>`); minis.push(`<button ${d} onclick="roMessage(this)" title="Template WhatsApp" style="${mini}">💬</button>`); }
+    else { minis.push(`<button data-phone="${he(c.phone)}" onclick="roCall(this)" title="Call" style="${mini}">📞</button>`); minis.push(`<button ${d} onclick="roMessage(this)" title="Template WhatsApp" style="${mini}">💬</button>`); }
+    minis.push(`<button onclick="openDetail('${c.orderNum}')" title="Open order" style="${mini}">🧾</button>`);
+    if(stage==='thank'||stage==='loyal') minis.push(`<button data-name="${he(c.name)}" data-phone="${he(c.phone)}" data-order="${he(c.orderNum)}" onclick="fbOpen(this)" title="Log feedback" style="${mini}">⭐</button>`);
+    if(stage==='thank') minis.push(`<button data-name="${he(c.name)}" data-phone="${he(c.phone)}" onclick="roReview(this)" title="Send 5★ review link" style="${mini}">🌟</button>`);
+    body=`${roPlanHtml(c)}${ctxLine}${reason}
+      <div style="display:flex;flex-direction:column;gap:8px">${primary}<div style="display:flex;gap:7px">${minis.join('')}</div></div>
+      <details style="margin-top:11px"><summary style="cursor:pointer;font-size:11.5px;color:var(--tx-3,#79839e);padding:4px 0">✍️ Log outcome — required to mark done</summary>
+        <div class="ro-note" style="margin-top:6px"><input class="ro-note-input" type="text" placeholder="What they said — e.g. wants pickup Friday" maxlength="280"><button class="ro-note-save" data-phone="${he(c.phone)}" data-stage="${stage}" data-order="${he(c.orderNum)}" onclick="roSaveNote(this)">Log</button></div>
+        <div class="ro-when-row">Next: <select class="ro-when"><option value="1">tomorrow</option><option value="3" selected>in 3 days</option><option value="7">in 1 week</option><option value="14">in 2 weeks</option><option value="30">in 1 month</option></select></div>
+      </details>`;
   }
   const riskPill=done?'':roRiskPill(c);
   return `<div class="ro-card${done?' is-done':''}${stage==='overdue'?' is-overdue':''}">
