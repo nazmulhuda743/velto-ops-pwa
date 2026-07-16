@@ -2406,7 +2406,7 @@ async function _ivHydrateStains(s){
       document.querySelectorAll('img[data-sp="'+CSS.escape(p)+'"]').forEach(im=>{ im.src=u; }); });
   }catch(e){ console.warn('stain hydrate:',e); }
 }
-function showInvoice(){renderInvoice(lastSaved);document.getElementById('invoiceModal').classList.add('show');try{history.pushState({v:'invoice'},'');}catch(e){}}
+function showInvoice(){renderInvoice(lastSaved);document.getElementById('invoiceModal').classList.add('show');try{loadJsPDF();}catch(e){}try{history.pushState({v:'invoice'},'');}catch(e){}}
 function closeInvoice(){document.getElementById('invoiceModal').classList.remove('show');}
 async function sendInvoice(){
   const s=currentInvoice||lastSaved;
@@ -2422,28 +2422,27 @@ async function sendInvoice(){
     +'\n\nThank you for trusting Velto.';
   const btn=document.querySelector('#invoiceModal .iv-wa');const oldt=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent='Preparing\u2026';}
   try{
-    // Best path: navigator.share with the PDF file (Android Chrome / iOS Safari, HTTPS).
-    if(navigator.canShare && navigator.share){
+    // jsPDF is preloaded when the invoice opens, so this path stays inside the
+    // user-gesture window \u2014 required for navigator.share to be allowed.
+    if(navigator.canShare&&navigator.share&&(window.jspdf&&window.jspdf.jsPDF)){
       try{
-        const okp=await loadJsPDF();
-        if(okp&&window.jspdf&&window.jspdf.jsPDF){
-          const pdf=buildInvoicePdf(s);
-          const blob=pdf.output('blob');
-          const file=new File([blob],'Velto-'+(s.id||'invoice')+'.pdf',{type:'application/pdf'});
-          if(navigator.canShare({files:[file]})){
-            await navigator.share({title:'Velto receipt '+(s.id||''),text:msg,files:[file]});
-            return; // success — share sheet will offer WhatsApp with PDF attached
-          }
+        const pdf=buildInvoicePdf(s);
+        const blob=pdf.output('blob');
+        const file=new File([blob],'Velto-'+(s.id||'invoice')+'.pdf',{type:'application/pdf'});
+        if(navigator.canShare({files:[file]})){
+          await navigator.share({title:'Velto receipt '+(s.id||''),text:msg,files:[file]});
+          return; // share sheet offers WhatsApp with the PDF attached
         }
       }catch(shErr){
-        if(shErr && shErr.name==='AbortError') return; // user canceled
+        if(shErr&&shErr.name==='AbortError')return; // user canceled the sheet
         console.warn('Web Share with file failed, falling back:',shErr);
       }
     }
-    // Fallback: open the customer's WhatsApp chat with the text message.
-    if(!n||n.replace(/\D/g,'').length<11){toast('No phone \u2014 saving PDF instead');await savePdf();return;}
+    // Fallback: save the PDF locally so it can be attached, then open the chat with the text summary.
+    try{const okp=await loadJsPDF();if(okp&&window.jspdf&&window.jspdf.jsPDF){await deliverPdf(buildInvoicePdf(s),'Velto-'+(s.id||'invoice')+'.pdf');}}catch(e){console.warn('fallback pdf save:',e);}
+    if(!n||n.replace(/\D/g,'').length<11){toast('No phone \u2014 PDF saved instead');return;}
     window.open('https://wa.me/'+n+'?text='+encodeURIComponent(msg),'_blank');
-    toast('Opened WhatsApp \u2014 also tap Save PDF to attach the receipt');
+    toast('PDF saved \u2014 attach it in the chat that just opened');
   }catch(e){console.error('sendInvoice:',e);toast('Could not send \u2014 try Save PDF');}
   finally{if(btn){btn.disabled=false;btn.textContent=oldt;}}
 }
@@ -2484,6 +2483,12 @@ function buildInvoicePdf(s){
   const sub=(s.items||[]).reduce((a,i)=>a+(Number(i.quoted)||0)*(Number(i.qty)||0),0);
   const qtyN=(s.items||[]).reduce((a,i)=>a+(Number(i.qty)||0),0);
   const svc=(s.total||0)-sub;const due=Math.max(0,(s.total||0)-(s.paid||0));
+  // navy footer band on EVERY page, so no page ever looks cut off
+  const BANDH=28;
+  const band=()=>{const by=PH-BANDH;doc.setFillColor(...navy);doc.rect(0,by,PW,BANDH,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...white);doc.text('VELTO  \u00B7  DHAKA',PADX,by+18,{charSpace:1});
+    doc.setFont('courier','normal');doc.setFontSize(8.5);doc.setTextColor(142,151,184);doc.text('Issued '+(s.date||'')+'   \u00B7   ref '+(s.id||''),PW-PADX,by+18,{align:'right'});};
+  const newPage=()=>{band();doc.addPage();doc.setFillColor(...paper);doc.rect(0,0,PW,PH,'F');};
   doc.setFillColor(...paper);doc.rect(0,0,PW,PH,'F');
   const headH=118;
   doc.setFillColor(...navy);doc.rect(0,0,PW,headH,'F');
@@ -2496,75 +2501,91 @@ function buildInvoicePdf(s){
   doc.setFont('helvetica','bold');doc.setFontSize(8);
   const pillTxt=(st.pill||'').toUpperCase();const pwid=doc.getTextWidth(pillTxt)+(pillTxt.length-1)+26;const px=PW-PADX-pwid;
   doc.setDrawColor(...pillRGB);doc.setLineWidth(1);doc.roundedRect(px,78,pwid,17,8.5,8.5,'S');
-  doc.setTextColor(...pillRGB);doc.text(pillTxt,px+11,89.5,{charSpace:1});
-  doc.setFillColor(...white);doc.rect(0,headH,PW,52,'F');doc.setDrawColor(...line);doc.setLineWidth(0.8);doc.line(0,headH+52,PW,headH+52);
+  doc.setTextColor(...pillRGB);doc.text(pillTxt,px+13,89.5,{charSpace:1});
+  doc.setFillColor(...white);doc.rect(0,headH,PW,50,'F');doc.setDrawColor(...line);doc.setLineWidth(0.8);doc.line(0,headH+50,PW,headH+50);
   const colX=[PADX,PADX+CW/3,PADX+2*CW/3];
   doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(...muted2);
-  doc.text('ISSUED',colX[0],headH+22,{charSpace:1.2});doc.text('ORDER',colX[1],headH+22,{charSpace:1.2});doc.text('DELIVERY',colX[2],headH+22,{charSpace:1.2});
-  doc.setFontSize(11);doc.setTextColor(...navy);doc.text(String(s.date||''),colX[0],headH+40);
-  doc.setFont('courier','normal');doc.text(String(s.id||''),colX[1],headH+40);
-  doc.setFont('helvetica','italic');doc.setFontSize(10.5);doc.setTextColor(...muted);doc.text((s.delivery&&s.delivery!=='\u2014')?String(s.delivery):'On confirmation',colX[2],headH+40);
-  let y=headH+52+30;
+  doc.text('ISSUED',colX[0],headH+21,{charSpace:1.2});doc.text('ORDER',colX[1],headH+21,{charSpace:1.2});doc.text('DELIVERY',colX[2],headH+21,{charSpace:1.2});
+  doc.setFontSize(11);doc.setTextColor(...navy);doc.text(String(s.date||''),colX[0],headH+38);
+  doc.setFont('courier','normal');doc.text(String(s.id||''),colX[1],headH+38);
+  doc.setFont('helvetica','italic');doc.setFontSize(10.5);doc.setTextColor(...muted);doc.text((s.delivery&&s.delivery!=='\u2014')?String(s.delivery):'On confirmation',colX[2],headH+38);
+  let y=headH+50+26;
+  const cardW=250,cardX=PW-PADX-cardW,cardY=y-8,cardH=84;
+  // customer block, clipped so it never runs under the navy card
+  const nameMax=cardX-PADX-16;
   doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(...muted2);doc.text('BILLED TO',PADX,y,{charSpace:1.2});
-  doc.setFontSize(16);doc.setTextColor(...navy);doc.text(String(s.name||''),PADX,y+20);
+  doc.setFontSize(16);doc.setTextColor(...navy);
+  let nm=String(s.name||'');while(nm.length>2&&doc.getTextWidth(nm)>nameMax){nm=nm.slice(0,-1);}if(nm!==String(s.name||''))nm=nm.replace(/\s+\S*$/,'')+'\u2026';
+  doc.text(nm,PADX,y+19);
   doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(...muted);
-  let ly=y+38;if(s.addr){doc.text(String(s.addr),PADX,ly);ly+=14;}doc.text(String(s.phone||''),PADX,ly);
-  const cardW=250,cardX=PW-PADX-cardW,cardY=y-8,cardH=86;
+  let ly=y+36;
+  if(s.addr){const al=doc.splitTextToSize(String(s.addr),nameMax).slice(0,2);doc.text(al,PADX,ly);ly+=al.length*13;}
+  doc.text(String(s.phone||''),PADX,ly);
   doc.setFillColor(...navy);doc.roundedRect(cardX,cardY,cardW,cardH,10,10,'F');
   try{doc.saveGraphicsState();doc.roundedRect(cardX,cardY,cardW,cardH,10,10,null);doc.clip();doc.discardPath();_glow(doc,cardX+cardW-22,cardY+14,128,blue,1.0);_glow(doc,cardX+cardW-96,cardY+8,72,violet,0.5);doc.restoreGraphicsState();}catch(e){try{doc.restoreGraphicsState();}catch(_){}}
-  doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(142,151,184);doc.text(due>0?'BALANCE DUE':'AMOUNT PAID',cardX+18,cardY+24,{charSpace:1.2});
-  doc.setFontSize(26);doc.setTextColor(...white);doc.text('Tk '+(due>0?money(due):money(s.paid)),cardX+18,cardY+54);
-  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(168,176,206);doc.text(due>0?'Payable on delivery':'Settled in full',cardX+18,cardY+72);
-  y=Math.max(ly,cardY+cardH)+26;
+  doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(142,151,184);doc.text(due>0?'BALANCE DUE':'AMOUNT PAID',cardX+18,cardY+23,{charSpace:1.2});
+  doc.setFontSize(26);doc.setTextColor(...white);doc.text('Tk '+(due>0?money(due):money(s.paid)),cardX+18,cardY+52);
+  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(168,176,206);doc.text(due>0?'Payable on delivery':'Settled in full',cardX+18,cardY+70);
+  y=Math.max(ly,cardY+cardH)+24;
+  // item table — qty column geometry shared by header and rows
+  const qtyX=PW-PADX-92, nameW=qtyX-PADX-34;
   doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(...muted);
-  doc.text('ITEM',PADX,y,{charSpace:1.2});doc.text('QTY',PW-PADX-92,y,{align:'right',charSpace:1.2});doc.text('AMOUNT',PW-PADX,y,{align:'right',charSpace:1.2});
-  y+=8;doc.setDrawColor(...navy);doc.setLineWidth(1);doc.line(PADX,y,PW-PADX,y);y+=20;
-  const guard=()=>{if(y>700){doc.addPage();doc.setFillColor(...paper);doc.rect(0,0,PW,PH,'F');y=56;}};
-  cats.forEach(cat=>{const ls=(s.items||[]).filter(i=>i.svc===cat);if(!ls.length)return;guard();
+  doc.text('ITEM',PADX,y,{charSpace:1.2});doc.text('QTY',qtyX,y,{align:'right',charSpace:1.2});doc.text('AMOUNT',PW-PADX,y,{align:'right',charSpace:1.2});
+  y+=8;doc.setDrawColor(...navy);doc.setLineWidth(1);doc.line(PADX,y,PW-PADX,y);y+=18;
+  const guard=(need)=>{if(y+(need||0)>PH-BANDH-24){newPage();y=56;}};
+  cats.forEach(cat=>{const ls=(s.items||[]).filter(i=>i.svc===cat);if(!ls.length)return;guard(40);
     doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...violet);doc.text(cat.toUpperCase(),PADX,y,{charSpace:1.5});
     y+=6;doc.setDrawColor(...line);doc.setLineWidth(0.6);doc.line(PADX,y,PW-PADX,y);y+=14;
     ls.forEach(it=>{const lt=(Number(it.quoted)||0)*(Number(it.qty)||0);
-      doc.setFont('helvetica','normal');doc.setFontSize(12);doc.setTextColor(...navy);doc.text(String(it.name||''),PADX,y);
-      doc.setFont('courier','normal');doc.setFontSize(10);doc.setTextColor(...muted);doc.text('x '+(it.qty||0),PW-PADX-92,y,{align:'right'});
+      doc.setFont('helvetica','normal');doc.setFontSize(12);
+      const lines=doc.splitTextToSize(String(it.name||''),nameW).slice(0,2);
+      guard(lines.length*14+16);
+      doc.setTextColor(...navy);doc.text(lines,PADX,y);
+      doc.setFont('courier','normal');doc.setFontSize(10);doc.setTextColor(...muted);doc.text('x '+(it.qty||0),qtyX,y,{align:'right'});
       doc.setFontSize(11);doc.setTextColor(...navy);doc.text('Tk '+money(lt),PW-PADX,y,{align:'right'});
-      y+=7;doc.setDrawColor(...line);doc.setLineWidth(0.5);doc.setLineDashPattern([1,1.6],0);doc.line(PADX,y,PW-PADX,y);doc.setLineDashPattern([],0);y+=13;guard();});
-    y+=6;});
-  guard();const totY=y+4;const tcW=270,tcX=PW-PADX-tcW,tcH=140;
+      y+=(lines.length-1)*14;
+      y+=7;doc.setDrawColor(...line);doc.setLineWidth(0.5);doc.setLineDashPattern([1,1.6],0);doc.line(PADX,y,PW-PADX,y);doc.setLineDashPattern([],0);y+=13;});
+    y+=4;});
+  // totals card + seal (kept together as one block)
+  const tcW=270,tcX=PW-PADX-tcW,tcH=128;
+  guard(tcH+16);
+  const totY=y+2;
   doc.setFillColor(...white);doc.setDrawColor(...line);doc.setLineWidth(0.8);doc.roundedRect(tcX,totY,tcW,tcH,10,10,'FD');
-  let rry=totY+26;
-  const trow=(k,v,o={})=>{doc.setFont(o.kf||'helvetica',o.bold?'bold':'normal');doc.setFontSize(o.size||10.5);doc.setTextColor(...(o.kc||muted));doc.text(k,tcX+18,rry);doc.setFont(o.vf||'courier',o.bold?'bold':'normal');doc.setFontSize(o.vsize||o.size||10.5);doc.setTextColor(...(o.vc||ink2));doc.text(v,tcX+tcW-18,rry,{align:'right'});rry+=o.gap||20;};
+  let rry=totY+24;
+  const trow=(k,v,o={})=>{doc.setFont(o.kf||'helvetica',o.bold?'bold':'normal');doc.setFontSize(o.size||10.5);doc.setTextColor(...(o.kc||muted));doc.text(k,tcX+18,rry);doc.setFont(o.vf||'courier',o.bold?'bold':'normal');doc.setFontSize(o.vsize||o.size||10.5);doc.setTextColor(...(o.vc||ink2));doc.text(v,tcX+tcW-18,rry,{align:'right'});rry+=o.gap||18;};
   trow('Subtotal \u00B7 '+qtyN+' item'+(qtyN===1?'':'s'),'Tk '+money(sub));
   trow(svc<0?'Discount':'Service charge',(svc<0?'- Tk '+money(Math.abs(svc)):'Tk '+money(svc)));
-  doc.setDrawColor(...line);doc.setLineWidth(0.8);doc.line(tcX+14,rry-9,tcX+tcW-14,rry-9);
-  trow('Total','Tk '+money(s.total),{bold:true,size:13,vsize:15,kc:navy,vc:navy,vf:'helvetica',gap:24});
+  doc.setDrawColor(...line);doc.setLineWidth(0.8);doc.line(tcX+14,rry-8,tcX+tcW-14,rry-8);
+  trow('Total','Tk '+money(s.total),{bold:true,size:13,vsize:15,kc:navy,vc:navy,vf:'helvetica',gap:22});
   trow('Paid'+(s.method&&s.method!=='\u2014'?' \u00B7 '+s.method:''),'- Tk '+money(s.paid),{vc:green});
-  doc.setLineDashPattern([1,1.6],0);doc.setDrawColor(...line);doc.line(tcX+14,rry-9,tcX+tcW-14,rry-9);doc.setLineDashPattern([],0);
+  doc.setLineDashPattern([1,1.6],0);doc.setDrawColor(...line);doc.line(tcX+14,rry-8,tcX+tcW-14,rry-8);doc.setLineDashPattern([],0);
   trow('AMOUNT DUE','Tk '+money(due),{bold:true,size:11,vsize:15,kc:violet,vc:rose,vf:'helvetica'});
-  const scx=PADX+72,scy=totY+70,R=56;
+  const scx=PADX+72,scy=totY+tcH/2,R=52;
   doc.setDrawColor(...sealCol);doc.setLineWidth(2.2);doc.circle(scx,scy,R,'S');doc.setLineWidth(1);doc.circle(scx,scy,R-6,'S');
-  doc.setTextColor(...sealCol);doc.setFont('helvetica','bold');doc.setFontSize(9);doc.text(st.seal1,scx,scy-12,{align:'center',charSpace:1.5});
-  doc.setFontSize(21);doc.text(st.seal2,scx,scy+12,{align:'center',charSpace:1});
-  doc.setFont('courier','normal');doc.setFontSize(8.5);doc.text(fmtSealDate(s),scx,scy+30,{align:'center'});
-  y=totY+tcH+26;
-  if(PH-y<165){doc.addPage();doc.setFillColor(...paper);doc.rect(0,0,PW,PH,'F');y=64;}
-  doc.setDrawColor(...line);doc.setLineWidth(0.8);doc.line(PADX,y,PW-PADX,y);y+=18;
-  doc.setFont('times','italic');doc.setFontSize(19);doc.setTextColor(...navy);doc.text('Thank you for trusting Velto.',PADX,y);y+=15;
-  doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(...muted);
-  doc.text('Each piece, hand-finished and returned ready to wear.',PADX,y);y+=15;
-  doc.setDrawColor(...line);doc.setLineWidth(0.5);doc.line(PADX,y,PW-PADX,y);y+=12;
-  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...navy);doc.text('TERMS & CONDITIONS',PADX,y,{charSpace:0.7});y+=12;
-  doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(...ink2);
-  ['1. ALL ITEMS ARE ACCEPTED FOR WASHING, IRONING AND DRY CLEANING WITH EVERY CARE TAKEN.',
+  doc.setTextColor(...sealCol);doc.setFont('helvetica','bold');doc.setFontSize(9);doc.text(st.seal1,scx,scy-11,{align:'center',charSpace:1.5});
+  doc.setFontSize(20);doc.text(st.seal2,scx,scy+11,{align:'center',charSpace:1});
+  doc.setFont('courier','normal');doc.setFontSize(8.5);doc.text(fmtSealDate(s),scx,scy+28,{align:'center'});
+  y=totY+tcH+22;
+  // footer block — measure real height before deciding to break
+  const terms=['1. ALL ITEMS ARE ACCEPTED FOR WASHING, IRONING AND DRY CLEANING WITH EVERY CARE TAKEN.',
    '2. WHILE WE FOLLOW CARE LABELS, WE ARE NOT RESPONSIBLE FOR COLOUR BLEEDING, FADING OR SHRINKAGE INHERENT TO THE FABRIC, OR FOR ITEMS WITHOUT A CARE LABEL.',
    '3. PLEASE EMPTY ALL POCKETS. WE ARE NOT RESPONSIBLE FOR MONEY, JEWELLERY OR ARTICLES LEFT INSIDE GARMENTS.',
    '4. ANY CLAIM MUST BE REPORTED ON WHATSAPP WITHIN 48 HOURS OF DELIVERY, QUOTING YOUR ORDER NUMBER.',
    '5. OUR LIABILITY FOR LOSS OR DAMAGE WILL NOT EXCEED TEN TIMES THE CLEANING CHARGE OF THE ITEM.',
-   '6. ITEMS UNDELIVERED AFTER 30 DAYS WILL INCUR A 10% MONTHLY STORAGE FEE.'
-  ].forEach(t=>{const ls=doc.splitTextToSize(t,CW);doc.text(ls,PADX,y);y+=ls.length*7.8;});
-  y+=10;
-  const lbY=Math.max(y,PH-32);doc.setFillColor(...navy);doc.rect(0,lbY,PW,32,'F');
-  doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...white);doc.text('VELTO  \u00B7  DHAKA',PADX,lbY+20,{charSpace:1});
-  doc.setFont('courier','normal');doc.setFontSize(8.5);doc.setTextColor(142,151,184);doc.text('Issued '+(s.date||'')+'   \u00B7   ref '+(s.id||''),PW-PADX,lbY+20,{align:'right'});
+   '6. ITEMS UNDELIVERED AFTER 30 DAYS WILL INCUR A 10% MONTHLY STORAGE FEE.'];
+  doc.setFontSize(6.5);
+  let termsH=0;const termLines=terms.map(t=>{const ls=doc.splitTextToSize(t,CW);termsH+=ls.length*7.6;return ls;});
+  const footH=16+14+14+10+12+termsH;
+  if(y+footH>PH-BANDH-10){newPage();y=60;}
+  doc.setDrawColor(...line);doc.setLineWidth(0.8);doc.line(PADX,y,PW-PADX,y);y+=16;
+  doc.setFont('times','italic');doc.setFontSize(19);doc.setTextColor(...navy);doc.text('Thank you for trusting Velto.',PADX,y);y+=14;
+  doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(...muted);
+  doc.text('Each piece, hand-finished and returned ready to wear.',PADX,y);y+=14;
+  doc.setDrawColor(...line);doc.setLineWidth(0.5);doc.line(PADX,y,PW-PADX,y);y+=10;
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...navy);doc.text('TERMS & CONDITIONS',PADX,y,{charSpace:0.7});y+=12;
+  doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(...ink2);
+  termLines.forEach(ls=>{doc.text(ls,PADX,y);y+=ls.length*7.6;});
+  band();
   return doc;
 }
 async function loadHtml2Canvas(){
@@ -2590,19 +2611,46 @@ async function _captureInvoicePdf(s){
 }
 async function savePdf(){
   if(!document.getElementById('invoiceModal').classList.contains('show')){toast('Open an invoice first');return;}
-  const btn=document.querySelector('#invoiceModal .iv-dl');const oldt=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent='Generating…';}
-  toast('Generating PDF…');
+  const btn=document.querySelector('#invoiceModal .iv-dl');const oldt=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent='Generating\u2026';}
   try{
     const okp=await loadJsPDF();
-    if(!okp||!(window.jspdf&&window.jspdf.jsPDF)){toast('Could not load PDF tool — check your connection');return;}
+    if(!okp||!(window.jspdf&&window.jspdf.jsPDF)){toast('Could not load PDF tool \u2014 check your connection');return;}
     const s=currentInvoice; if(!s){toast('Nothing to save');return;}
     const pdf=buildInvoicePdf(s);
-    pdf.save('Velto-'+(s.id||'invoice')+'.pdf');
-    toast('PDF saved');
+    const ok=await deliverPdf(pdf,'Velto-'+(s.id||'invoice')+'.pdf');
+    if(ok)toast('PDF saved');
   }catch(e){console.error('pdf:',e);toast('PDF failed (see console)');}
   finally{if(btn){btn.disabled=false;btn.textContent=oldt;}}
 }
-function invoiceForOrder(){const o=currentViewOrder;if(!o)return;renderInvoice({id:o.id,name:o.name,phone:o.phone,addr:[o.addr,(o.zone?o.zone.split('·')[0].trim():'')].filter(Boolean).join(', '),items:o.lines.map(l=>({svc:l.svc,name:l.name,qty:l.qty,quoted:l.price})),total:o.total,paid:o.paid,method:o.method,date:fullDate(o.rawDate)||o.date,delivery:o.deliveryDate?fullDate(o.deliveryDate):''});document.getElementById('invoiceModal').classList.add('show');}
+// Hand the PDF to the device reliably across desktop, Android PWA and iOS PWA.
+async function deliverPdf(pdf,filename){
+  const blob=pdf.output('blob');
+  const isIOS=/iP(hone|od|ad)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const standalone=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||window.navigator.standalone===true;
+  // iOS (and iOS PWA) has no download manager: use the native share sheet with the file.
+  if(isIOS){
+    try{
+      const file=new File([blob],filename,{type:'application/pdf'});
+      if(navigator.canShare&&navigator.share&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:filename});return true;}
+    }catch(e){if(e&&e.name==='AbortError')return false;console.warn('share save failed:',e);}
+    const u=URL.createObjectURL(blob);const w=window.open(u,'_blank');
+    if(!w)toast('Allow pop-ups to view the PDF');setTimeout(()=>URL.revokeObjectURL(u),120000);return !!w;
+  }
+  // Desktop + Android: anchor download with a real object URL (works in installed PWAs too).
+  try{
+    const u=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=u;a.download=filename;a.rel='noopener';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),120000);return true;
+  }catch(e){console.warn('anchor download failed:',e);}
+  // Last resort: share sheet, then open in tab.
+  try{
+    const file=new File([blob],filename,{type:'application/pdf'});
+    if(navigator.canShare&&navigator.share&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:filename});return true;}
+  }catch(e){if(e&&e.name==='AbortError')return false;}
+  const u2=URL.createObjectURL(blob);window.open(u2,'_blank');setTimeout(()=>URL.revokeObjectURL(u2),120000);return true;
+}
+function invoiceForOrder(){const o=currentViewOrder;if(!o)return;renderInvoice({id:o.id,name:o.name,phone:o.phone,addr:[o.addr,(o.zone?o.zone.split('·')[0].trim():'')].filter(Boolean).join(', '),items:o.lines.map(l=>({svc:l.svc,name:l.name,qty:l.qty,quoted:l.price})),total:o.total,paid:o.paid,method:o.method,date:fullDate(o.rawDate)||o.date,delivery:o.deliveryDate?fullDate(o.deliveryDate):''});document.getElementById('invoiceModal').classList.add('show');try{loadJsPDF();}catch(e){}}
 let currentInvoice=null;
 function fmtSealDate(s){var d=new Date(s&&s.date);if(isNaN(d))return (s&&s.date)||'';var p=function(n){return String(n).padStart(2,'0');};return p(d.getDate())+'\u00B7'+p(d.getMonth()+1)+'\u00B7'+String(d.getFullYear()).slice(2);}
 function invState(total,paid){
