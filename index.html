@@ -2474,12 +2474,19 @@ function _gradBar(doc,x,y,w,h){
     else{const u=(t-0.5)/0.5;c=[_lerp(st[1][0],st[2][0],u),_lerp(st[1][1],st[2][1],u),_lerp(st[1][2],st[2][2],u)];}
     doc.setFillColor(c[0],c[1],c[2]);doc.rect(x+i*seg,y,seg+0.35,h,'F');}
 }
-function _glow(doc,cx,cy,r,rgb,base){
-  if(!doc.GState){return;}
-  try{doc.saveGraphicsState();
-  [[1.0,0.08],[0.74,0.13],[0.5,0.20],[0.3,0.28]].forEach(function(L){
-    doc.setGState(new doc.GState({opacity:L[1]*base}));doc.setFillColor(rgb[0],rgb[1],rgb[2]);doc.ellipse(cx,cy,r*L[0],r*L[0],'F');});
-  doc.restoreGraphicsState();}catch(e){try{doc.restoreGraphicsState();}catch(_){} }
+function _glow(doc,cx,cy,r,rgb,base,bg){
+  // Soft radial glow WITHOUT PDF transparency: concentric solid ellipses whose
+  // colour is pre-blended from the background toward the glow colour. This is
+  // the same viewer-proof technique as _gradBar — the earlier GState/opacity
+  // version rendered in the in-app preview but dropped out (or turned into solid
+  // blobs) in the downloaded PDF on viewers that ignore soft transparency.
+  bg=bg||[11,16,32];            // header + balance card are both navy
+  const N=16;
+  for(let i=0;i<N;i++){ const f=i/(N-1);
+    const rad=r*(1-0.86*f);                       // large (dim, outer) → small (bright, inner)
+    const a=Math.min(1, Math.pow(f,1.3)*base*0.95 + 0.02);
+    doc.setFillColor(_lerp(bg[0],rgb[0],a),_lerp(bg[1],rgb[1],a),_lerp(bg[2],rgb[2],a));
+    doc.ellipse(cx,cy,rad,rad,'F'); }
 }
 async function stainsForInvoice(s){
   if(!s||s.stains!==undefined||!s.dbid||!sb) return (s&&s.stains&&s.stains.length)?true:false;
