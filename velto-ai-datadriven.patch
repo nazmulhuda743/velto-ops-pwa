@@ -1,0 +1,664 @@
+From 5e6dc41033714970a57616510ea185a3768f7a29 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 16 Jul 2026 21:36:32 +0000
+Subject: [PATCH] Add data-driven AI layer: closed-loop planner, new-customer
+ priority, propensity, feedback
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Builds on the revenue-at-risk + AI copilot work with five data-driven upgrades:
+
+1. Closed-loop AI planner — after a CSR logs what a customer said, the AI
+   decides the next move (channel, timing, angle) and pre-drafts the next
+   message. Stored in ai_plans; surfaced on the card; the ✨ AI button uses
+   the planned message instantly. Edge function gains a "plan" mode.
+
+2. New-customer protection — first-time buyers (not yet repeat) jump ahead on
+   the list, get a 🆕 badge and a caution note; winning the 2nd order is
+   treated as the highest-leverage move.
+
+3. True per-customer messages — the full follow-up history is passed to the
+   copilot, so drafts are specific, never one-template-for-all.
+
+4. Likely-to-order-soon — roDue() scores each customer's propensity from their
+   personal rhythm; a 🔥 hot list, chip filter, pills, and dashboard tile.
+
+5. Feedback collection — a ⭐ capture sheet logs rating + comment (feedback
+   table); low ratings raise churn risk and flag recovery, high ratings push
+   to review; dashboard shows average rating.
+
+New Supabase tables (feedback, ai_plans) via supabase/ai-upgrade.sql. Every DB
+call is best-effort — until the tables exist the app runs on local data and
+never errors.
+
+Verified: inline scripts parse clean; roDue/pills/plan/overlays exercised in a
+headless browser with no JS errors.
+---
+ index.html                             | 187 +++++++++++++++++++++++--
+ supabase/ai-upgrade.sql                |  62 ++++++++
+ supabase/functions/ai-copilot/index.ts | 145 +++++++++++++------
+ 3 files changed, 341 insertions(+), 53 deletions(-)
+ create mode 100644 supabase/ai-upgrade.sql
+
+diff --git a/index.html b/index.html
+index 49f7f5e..f87ab86 100644
+--- a/index.html
++++ b/index.html
+@@ -1580,6 +1580,7 @@ function unlockApp(p){
+   loadOrders();
+   loadCatalog();
+   loadReorderActions();
++  loadFeedback(); loadPlans();
+   loadCustomers();
+   wirePickerEvents();
+   loadNextId();
+@@ -1854,7 +1855,7 @@ function openScreen(id,title){
+   if(id==='s-kpi'){ renderKpi(); loadKpi().then(()=>renderKpi()); }
+   if(id==='s-deliveries')loadDeliveries();
+   if(id==='s-collect')renderCollect();
+-  if(id==='s-reorder'){ renderReorder(); loadReorderActions().then(()=>renderReorder()); if(!custData.length && typeof loadCustomers==='function'){ try{ const _p=loadCustomers(); if(_p&&_p.then) _p.then(()=>renderReorder()); }catch(e){} } if(!_dashboardData && typeof renderHomeStats==='function') renderHomeStats().then(()=>renderReorder()); }
++  if(id==='s-reorder'){ renderReorder(); loadReorderActions().then(()=>renderReorder()); loadFeedback().then(()=>renderReorder()); loadPlans().then(()=>renderReorder()); if(!custData.length && typeof loadCustomers==='function'){ try{ const _p=loadCustomers(); if(_p&&_p.then) _p.then(()=>renderReorder()); }catch(e){} } if(!_dashboardData && typeof renderHomeStats==='function') renderHomeStats().then(()=>renderReorder()); }
+ }
+ 
+ // ===== Customers tab =====
+@@ -3470,6 +3471,8 @@ function roRisk(c){
+     const fresh=h[0]&&(Date.now()-new Date(h[0].created_at).getTime())<10*86400000;
+     if(fresh && /pickup booked|replied|coming|agreed|will|wants reminder/.test(txt)) p-=0.22;
+   }
++  const fb=(typeof _fbMap!=='undefined')?_fbMap[normPhone(c.phone)]:null;   // an unhappy rating means real churn danger
++  if(fb && fb.rating){ if(fb.rating<=2) p+=0.18; else if(fb.rating>=4) p-=0.05; }
+   p=Math.max(0.01,Math.min(0.98,p));
+   const value=Number(c.potential||c.avg||c.value)||0;
+   const atRisk=Math.round(p*value);
+@@ -3534,6 +3537,11 @@ function aiDraft(btn){
+ }
+ function aiRegen(){ if(!_aiCtx) return; aiShow('✨ Redrafting…','',true); aiRun(_aiCtx,true); }
+ async function aiRun(ctx,regen){
++  // If the AI already planned a message from the last logged reply, use it instantly (no cost, no wait).
++  if(!regen && typeof _planMap!=='undefined'){
++    const pl=_planMap[normPhone(ctx.phone)];
++    if(pl && pl.message){ aiShow('✨ AI draft — planned from your last follow-up', pl.reasoning?('🧠 '+pl.reasoning):'', false, pl.message); return; }
++  }
+   let msg=null, meta='';
+   try{
+     if(sb && sb.functions && typeof sb.functions.invoke==='function'){
+@@ -3543,6 +3551,7 @@ async function aiRun(ctx,regen){
+         daysSince:c?c.days:null, cadence:c?c.gap:null, zone:c?c.zone:'',
+         services:c?(c.services||[]).slice(0,4):[],
+         lastNote:(c&&c.history&&c.history[0])?(c.history[0].note||c.history[0].outcome||''):'',
++        isNew:c?!!c.isNew:false, history:roHistoryPayload(ctx.phone),
+         riskPct:(c&&c.risk)?Math.round(c.risk.p*100):null, variety:regen?1:0 };
+       const {data,error}=await sb.functions.invoke(AI_COPILOT_FN,{body:payload});
+       if(error) throw error;
+@@ -3556,6 +3565,124 @@ async function aiRun(ctx,regen){
+   }
+   aiShow('✨ AI draft — edit anything, then send',meta,false,msg);
+ }
++
++/* ==================== DATA-DRIVEN LAYER (v64) ====================
++   1) roDue     — likelihood a customer orders again SOON (hot list)
++   2) feedback  — capture ratings/comments, feed them into risk & recovery
++   3) AI planner — after a CSR logs a reply, the AI decides the next move
++   Every DB call is best-effort: if a table isn't created yet, the app still
++   runs on local data and simply shows less — never an error. */
++
++/* ---- 1. Likely-to-order-soon (the positive twin of revenue-at-risk) ---- */
++function roDue(c){
++  if(!c || c.stage==='inflight' || c.stage==='converted' || c.stage==='lost') return {soon:false,score:0,when:''};
++  const gap=Number(c.gap)||0, days=(c.days==null?null:Number(c.days));
++  if(!gap || days==null) return {soon:false,score:0,when:''};
++  const r=days/gap;                                  // 1.0 = exactly on their usual rhythm
++  let score=0;
++  if(r>=0.7 && r<=1.6) score=1-Math.abs(1-r);        // peak intent right around their cadence
++  else if(r>1.6 && r<=2.2) score=0.22;               // late but still catchable
++  if(c.repeat) score+=0.15;                          // proven repeat buyers are likelier
++  if(c.ratio!=null && c.ratio>=0.8 && c.ratio<=1.3) score+=0.15;  // consistent rhythm = predictable
++  if((Number(c.orderCount)||0)>=4) score+=0.10;      // habit formed
++  score=Math.max(0,Math.min(1,score));
++  return {soon:score>=0.55, score, when:(r<=1?'due now':'due any day')};
++}
++
++/* ---- 2. Customer feedback (ratings + comments) ---- */
++let fbData = lsGet('velto_feedback') || [];
++let _fbMap = {};
++function fbBuildMap(){ const m={}; for(const f of fbData){ const k=normPhone(f.customer_phone)||f.customer_phone; if(!k)continue; if(!m[k]||new Date(f.created_at)>new Date(m[k].created_at)) m[k]=f; } _fbMap=m; }
++fbBuildMap();
++async function loadFeedback(){
++  fbBuildMap();
++  if(!sb || (typeof navigator!=='undefined' && navigator.onLine===false)) return;
++  try{
++    const since=new Date(Date.now()-365*86400000).toISOString();
++    const {data,error}=await sb.from('feedback').select('*').gte('created_at',since).order('created_at',{ascending:false}).limit(5000);
++    if(!error && data){ fbData=data; lsSet('velto_feedback',data); }
++  }catch(e){ console.warn('feedback load:',e); }
++  fbBuildMap();
++}
++function fbAvg(){ let s=0,n=0; for(const f of fbData){ const r=Number(f.rating); if(r>=1&&r<=5){ s+=r; n++; } } return n?{avg:Math.round(s/n*10)/10,n}:{avg:null,n:0}; }
++async function roSaveFeedback(phone,order,rating,comment){
++  const rec={customer_phone:normPhone(phone)||phone,order_number:order||null,rating:Number(rating)||null,comment:comment||null,channel:'whatsapp',created_by_name:currentName||'Staff',created_at:new Date().toISOString()};
++  fbData.unshift(rec); lsSet('velto_feedback',fbData); fbBuildMap();
++  try{ renderReorder(); }catch(e){}
++  if(sb){ try{ const ins={...rec}; delete ins.created_at;
++    if(typeof navigator!=='undefined' && navigator.onLine===false){ try{outboxAdd('feedback','insert',ins);}catch(e){} return; }
++    const {error}=await sb.from('feedback').insert(ins);
++    if(error) console.warn('feedback insert:',error.message);
++  }catch(e){ console.warn('feedback insert:',e); } }
++}
++let _fbCtx=null;
++function fbEnsureOverlay(){
++  if(document.getElementById('fbOverlay')) return;
++  const d=document.createElement('div');
++  d.id='fbOverlay';
++  d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:none;align-items:flex-end;justify-content:center;z-index:9999';
++  d.addEventListener('click',e=>{ if(e.target===d) fbClose(); });
++  d.innerHTML=`<div style="background:var(--card,#141a2b);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom))">
++    <div id="fbTitle" style="font-weight:800;font-size:15px;color:var(--tx,#eaf0ff);margin-bottom:3px"></div>
++    <div style="font-size:11.5px;color:var(--tx-3,#8b94ad);margin-bottom:14px">Log what the customer told you — it flags unhappy customers early and pushes happy ones to review.</div>
++    <div id="fbStars" style="display:flex;gap:8px;justify-content:center;margin-bottom:14px">${[1,2,3,4,5].map(n=>`<button data-n="${n}" onclick="fbPick(${n})" style="font-size:30px;line-height:1;background:none;border:none;cursor:pointer;filter:grayscale(1);opacity:.5;transition:.12s">⭐</button>`).join('')}</div>
++    <textarea id="fbComment" maxlength="400" placeholder="What did they say? (optional)" style="width:100%;box-sizing:border-box;min-height:70px;background:var(--bg-1,#0e1424);color:var(--tx,#eaf0ff);border:1px solid var(--bd,#26304a);border-radius:12px;padding:12px 13px;font-size:14px;resize:vertical"></textarea>
++    <div style="display:flex;gap:9px;margin-top:14px">
++      <button onclick="fbClose()" style="flex:0 0 auto;background:var(--bg-1,#0e1424);color:var(--tx-2,#aab4cc);border:1px solid var(--bd,#26304a);border-radius:12px;padding:13px 18px;font-size:14px;font-weight:700">Cancel</button>
++      <button onclick="fbSubmit()" style="flex:1;background:var(--amber,#ffb020);color:#3a2600;border:none;border-radius:12px;padding:13px 18px;font-size:14px;font-weight:800">Save feedback</button>
++    </div></div>`;
++  document.body.appendChild(d);
++}
++function fbPick(n){ if(!_fbCtx)_fbCtx={}; _fbCtx.rating=n; const box=document.getElementById('fbStars'); if(box) box.querySelectorAll('button').forEach(b=>{ const on=Number(b.getAttribute('data-n'))<=n; b.style.filter=on?'none':'grayscale(1)'; b.style.opacity=on?'1':'.5'; }); }
++function fbOpen(btn){ if(!btn)return; fbEnsureOverlay(); _fbCtx={phone:btn.getAttribute('data-phone')||'',name:btn.getAttribute('data-name')||'',order:btn.getAttribute('data-order')||'',rating:0}; document.getElementById('fbTitle').textContent='⭐ '+(btn.getAttribute('data-name')||'Customer')+' — how did it go?'; const c=document.getElementById('fbComment'); if(c)c.value=''; fbPick(0); document.getElementById('fbOverlay').style.display='flex'; }
++function fbClose(){ const o=document.getElementById('fbOverlay'); if(o)o.style.display='none'; _fbCtx=null; }
++function fbSubmit(){ if(!_fbCtx||!_fbCtx.rating){ toast('Tap a star rating first'); return; } const c=document.getElementById('fbComment'); const comment=c?c.value.trim():''; const ctx=_fbCtx; roSaveFeedback(ctx.phone,ctx.order,ctx.rating,comment); fbClose(); if(ctx.rating>=5){ toast('⭐ Saved — happy customer! Send them the review link 🙏'); } else if(ctx.rating<=2){ toast('⚠ Saved — unhappy. They’re now flagged for recovery.'); } else { toast('Feedback saved'); } }
++
++/* ---- 3. AI next-move planner (the closed loop) ---- */
++let planData = lsGet('velto_ai_plans') || [];
++let _planMap = {};
++function planBuildMap(){ const m={}; for(const p of planData){ const k=normPhone(p.customer_phone)||p.customer_phone; if(!k)continue; if(!m[k]||new Date(p.created_at)>new Date(m[k].created_at)) m[k]=p; } _planMap=m; }
++planBuildMap();
++async function loadPlans(){
++  planBuildMap();
++  if(!sb || (typeof navigator!=='undefined' && navigator.onLine===false)) return;
++  try{
++    const since=new Date(Date.now()-120*86400000).toISOString();
++    const {data,error}=await sb.from('ai_plans').select('*').gte('created_at',since).order('created_at',{ascending:false}).limit(5000);
++    if(!error && data){ planData=data; lsSet('velto_ai_plans',data); }
++  }catch(e){ console.warn('plans load:',e); }
++  planBuildMap();
++}
++function roHistoryPayload(phone){
++  const p=normPhone(phone);
++  return roActions.filter(a=>normPhone(a.customer_phone)===p).slice(0,6).map(a=>({
++    outcome:a.outcome||'', note:(a.note&&a.note!==a.outcome)?String(a.note).slice(0,140):'',
++    daysAgo:Math.max(0,Math.floor((Date.now()-new Date(a.created_at).getTime())/86400000))
++  }));
++}
++async function aiPlanNext(phone,stage,outcome,note,order){
++  if(!sb || !sb.functions || typeof sb.functions.invoke!=='function') return;
++  try{
++    let c=null; try{ const r=computeReorder(); c=(r._all||[]).find(x=>normPhone(x.phone)===normPhone(phone))||null; }catch(e){}
++    const payload={ mode:'plan', name:c?c.name:'', stage:stage||'nudge', lang:AI_LANG,
++      vip:c?c.priority==='HIGH':false, isNew:c?!!c.isNew:false,
++      orderCount:c?c.orderCount:0, lastValue:c?c.value:0, ltv:c?c.ltv:0,
++      daysSince:c?c.days:null, cadence:c?c.gap:null, zone:c?c.zone:'',
++      services:c?(c.services||[]).slice(0,4):[], lastOutcome:outcome||'', lastNote:note||'',
++      riskPct:(c&&c.risk)?Math.round(c.risk.p*100):null, history:roHistoryPayload(phone) };
++    const {data,error}=await sb.functions.invoke(AI_COPILOT_FN,{body:payload});
++    if(error || !data || !data.nextChannel) return;
++    const days=Math.max(1,Math.min(60,Number(data.nextInDays)||3));
++    const rec={ customer_phone:normPhone(phone)||phone, next_channel:String(data.nextChannel).slice(0,20),
++      next_in_days:days, follow_up_on:roDatePlus(days), angle:(data.angle||'').slice(0,60),
++      reasoning:(data.reasoning||'').slice(0,240), message:(data.message||'').slice(0,900),
++      source_outcome:outcome||'', created_by_name:currentName||'Staff', created_at:new Date().toISOString() };
++    planData.unshift(rec); lsSet('velto_ai_plans',planData); planBuildMap();
++    if(sb){ try{ const ins={...rec}; delete ins.created_at; await sb.from('ai_plans').insert(ins); }catch(e){ console.warn('plan insert:',e); } }
++    try{ renderReorder(); }catch(e){}
++    toast('🧠 AI planned the next move: '+rec.next_channel+' in '+days+'d');
++  }catch(e){ console.warn('ai plan:',e); }
++}
+ // Outcome / completed tracking (per-device for now; shared table is the next step)
+ // ---- Shared follow-up log (reorder_actions table) so the whole team sees outcomes ----
+ let _roChannel=null;
+@@ -3779,6 +3906,7 @@ function roOutcome(btn){
+   const oc=btn.getAttribute('data-outcome');
+   roLog(btn.getAttribute('data-phone'),btn.getAttribute('data-stage'),oc,note,btn.getAttribute('data-order'));
+   if(oc==='Pickup booked') celebrate(btn.getAttribute('data-name')||'', btn.getAttribute('data-potential')||''); else toast('Logged: '+oc);
++  aiPlanNext(btn.getAttribute('data-phone'),btn.getAttribute('data-stage'),oc,note,btn.getAttribute('data-order'));
+ }
+ function roSaveNote(btn){
+   if(!btn)return;
+@@ -3788,6 +3916,7 @@ function roSaveNote(btn){
+   const fu=roDatePlus(isNaN(days)?RO_COOLDOWN_DAYS:days);
+   roLog(btn.getAttribute('data-phone'),btn.getAttribute('data-stage'),note,note,btn.getAttribute('data-order'),fu);
+   toast('Logged · next follow-up '+(days===1?'tomorrow':'in '+days+' days'));
++  aiPlanNext(btn.getAttribute('data-phone'),btn.getAttribute('data-stage'),note,note,btn.getAttribute('data-order'));
+ }
+ async function roUndo(btn){
+   if(!btn)return; const phone=btn.getAttribute('data-phone'), stage=btn.getAttribute('data-stage');
+@@ -4324,13 +4453,18 @@ function computeReorder(){
+     else if(c.stage!=='inflight' && c.orderCount>=5 && c.orderCount%5===0 && c.days!=null && c.days<=10){ c.stage='loyal'; c.milestone=c.orderCount; }
+   }
+   const out={inflight:[],scheduled:[],loyal:[],thank:[],nudge:[],standing:[],overdue:[],winback:[],holdout:[],converted:[],_all:custs};
+-  let repeatCount=0, revenueAtRisk=0, atRiskCount=0;
++  let repeatCount=0, revenueAtRisk=0, atRiskCount=0, dueCount=0;
+   for(const c of custs){
+     if(c.repeat) repeatCount++;
++    c.isNew=(Number(c.orderCount)||0)<=1;            // first order, not yet a repeat — fragile & high-leverage
++    c.due=roDue(c);
+     c.risk=roRisk(c);
+-    if(['nudge','overdue','winback','scheduled'].includes(c.stage) && c.risk.band!=='low' && c.risk.atRisk>0 && !roDoneInfo(c.phone,c.stage)){
++    c.plan=(typeof _planMap!=='undefined')?(_planMap[normPhone(c.phone)]||null):null;
++    const pending=!roDoneInfo(c.phone,c.stage);
++    if(['nudge','overdue','winback','scheduled'].includes(c.stage) && c.risk.band!=='low' && c.risk.atRisk>0 && pending){
+       revenueAtRisk+=c.risk.atRisk; atRiskCount++;
+     }
++    if(c.due && c.due.soon && pending) dueCount++;
+     if(c.stage==='converted') out.converted.push(c);
+     else if(out[c.stage]) out[c.stage].push(c);
+   }
+@@ -4346,7 +4480,7 @@ function computeReorder(){
+   const toReach=out.scheduled.length+out.loyal.length+out.thank.length+out.nudge.length+out.overdue.length+out.winback.length;
+   const completed=roCompletedToday();
+   const convRate=custs.length?Math.round(repeatCount/custs.length*100):0;
+-  out._m={toReach,completed,remaining:Math.max(0,toReach-completed),revenueWaiting,convRate,repeatCount,anyCount:custs.length,revenueAtRisk,atRiskCount};
++  out._m={toReach,completed,remaining:Math.max(0,toReach-completed),revenueWaiting,convRate,repeatCount,anyCount:custs.length,revenueAtRisk,atRiskCount,dueCount,rating:fbAvg()};
+   out._founder=out.nudge.concat(out.overdue).filter(c=>c.priority==='HIGH').sort((a,b)=>b.value-a.value).slice(0,5);
+   return out;
+ }
+@@ -4379,7 +4513,15 @@ const PR_BADGE={HIGH:'🔥 HIGH',NORMAL:'🟡 NORMAL',LOW:'⚪ LOW'};
+ const STAGE_PILL={scheduled:['📅 SCHEDULED','sp-sched'],loyal:['🎉 LOYAL','sp-loyal'],thank:['THANK YOU','sp-thank'],nudge:['DAY 7–8','sp-nudge'],standing:['STANDING','sp-standing'],overdue:['OVERDUE','sp-overdue'],winback:['WIN-BACK','sp-winback']};
+ function monthLabel(mo){ const [y,m]=mo.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m,10)-1]+" '"+y.slice(2); }
+ const STAGE_RANK={scheduled:-2,loyal:-1,overdue:0,nudge:1,thank:2,standing:3,winback:4};
+-function roScore(c){ if(roDoneInfo(c.phone,c.stage)) return -1e12; const rank=(c.stage in STAGE_RANK)?STAGE_RANK[c.stage]:9; const prio=c.priority==='HIGH'?2:c.priority==='LOW'?0:1; const money=Math.min(9999,(c.risk?c.risk.atRisk:0)||(Number(c.value)||0)); return (9-rank)*1e7 + prio*1e4 + money; }
++function roScore(c){ if(roDoneInfo(c.phone,c.stage)) return -1e12;
++  let rank=(c.stage in STAGE_RANK)?STAGE_RANK[c.stage]:9;
++  const reach=['nudge','thank','overdue','scheduled','winback','standing'].includes(c.stage);
++  if(c.isNew && reach) rank-=1.5;                    // new customers jump ahead — protect the 1st→2nd order
++  const prio=c.priority==='HIGH'?2:c.priority==='LOW'?0:1;
++  const dueB=(c.due&&c.due.soon)?3e6:0;              // likely to order soon — surface them
++  const money=Math.min(9999,(c.risk?c.risk.atRisk:0)||(Number(c.value)||0));
++  return (9-rank)*1e7 + dueB + prio*1e4 + money;
++}
+ 
+ 
+ /* ---- true lift: contacted push-lanes vs holdout organic ---- */
+@@ -4435,6 +4577,21 @@ function roIntelHtml(){
+ }
+ function roToggleIntel(){ const b=document.getElementById('roIntelBody'); if(!b)return; const open=b.style.display==='none'; b.style.display=open?'block':'none'; lsSet('velto_ro_intel',open?1:0); const ch=document.getElementById('roIntelCh'); if(ch)ch.textContent=open?'▾':'▸'; }
+ 
++function roMorePills(c){
++  // small status pills that ride next to the stage pill: new / hot / feedback
++  const P=(txt,col)=>`<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:800;color:${col};border:1px solid ${col};border-radius:999px;padding:2px 8px;white-space:nowrap">${txt}</span>`;
++  let out='';
++  if(c.isNew) out+=P('🆕 NEW','var(--blue,#60a5fa)');
++  if(c.due && c.due.soon) out+=P('🔥 likely soon','var(--green,#34d399)');
++  const fb=(typeof _fbMap!=='undefined')?_fbMap[normPhone(c.phone)]:null;
++  if(fb && fb.rating){ out+= fb.rating<=2 ? P('⚠ '+fb.rating+'★','var(--danger,#ff5c6c)') : P(fb.rating+'★','var(--amber,#ffb020)'); }
++  return out;
++}
++function roPlanHtml(c){
++  const p=c.plan; if(!p || !p.next_channel) return '';
++  const when=p.next_in_days?(' in '+p.next_in_days+'d'):(p.follow_up_on?(' on '+fullDate(p.follow_up_on)):'');
++  return `<div class="ro-plan" style="font-size:11.5px;line-height:1.45;margin-bottom:9px;padding:8px 10px;border-radius:9px;background:rgba(124,92,255,.10);border:1px solid rgba(124,92,255,.4);color:var(--tx-2,#aab4cc)">🧠 <b style="color:var(--tx,#eaf0ff)">AI's next move: ${he(p.next_channel)}${when}</b>${p.reasoning?' — '+he(p.reasoning):''}${p.message?' <span style="color:var(--accent,#a78bfa);font-weight:700">· draft ready in ✨ AI</span>':''}</div>`;
++}
+ function roCard(c){
+   const stage=c.stage;
+   const pill=STAGE_PILL[stage]?`<span class="ro-sp ${STAGE_PILL[stage][1]}">${STAGE_PILL[stage][0]}</span>`:'';
+@@ -4449,7 +4606,7 @@ function roCard(c){
+     const when=' · '+(dhakaDateStr(done.created_at)===dhakaDateStr()?'today':relDate(done.created_at));
+     const noteHtml=(done.note && done.note!==done.outcome)?(' — “'+he(done.note)+'”'):'';
+     const tail=done._scheduledFor?('· 📅 '+fullDate(done._scheduledFor)):('· back in '+(done._cooldownLeft||1)+'d');
+-    body=`<div class="ro-done">✓ ${he(done.outcome)}${noteHtml}${who}${when} ${tail} <button class="ro-undo" data-phone="${he(c.phone)}" data-stage="${stage}" onclick="roUndo(this)">undo</button></div>`;
++    body=`<div class="ro-done">✓ ${he(done.outcome)}${noteHtml}${who}${when} ${tail} <button class="ro-undo" data-phone="${he(c.phone)}" data-stage="${stage}" onclick="roUndo(this)">undo</button></div>${roPlanHtml(c)}`;
+   } else {
+     const msgKind = (stage==='scheduled')?'nudge':stage;
+     const d=`data-name="${he(c.name)}" data-phone="${he(c.phone)}" data-kind="${msgKind}" data-ord="${c.milestone||c.orderCount||0}" data-vip="${c.priority==='HIGH'?1:0}"`;
+@@ -4465,12 +4622,15 @@ function roCard(c){
+     const _who=_h[0]&&_h[0].created_by_name?he(roFirstName(_h[0].created_by_name)):'someone';
+     const _whenTxt=_lastDays===0?'today':_lastDays===1?'yesterday':_lastDays+' days ago';
+     const _histLine = _h.length ? `<div class="ro-hist${_recent?' ro-hist-hot':''}">${_recent?'⚠️':'📋'} <b>${_who}</b> contacted them <b>${_whenTxt}</b> — ${he(_h[0].outcome)}${_h[0].note?` · “${he(_h[0].note)}”`:''}${_h.length>1?` · ${_h.length} contacts total`:''}${_cv?` · <span class="ro-conv">✓ came back in ${_cv.days}d (${he(_cv.order)})</span>`:''}${_recent?` — <b>check before calling again</b>`:''}</div>` : '';
+-    body=`${_sched}${_loyal}${_msHtml}${_histLine}<div class="ro-nba${c.nba.escalate?' escalate':''}">${c.nba.escalate?'⚠️':'🧠'} <b>${c.nba.action}</b> — ${he(c.nba.reason)}${c.nba.success?` <span class="ro-est">est ${c.nba.success}%</span>`:''}</div>
++    const _newCaution = c.isNew ? `<div class="ro-newcust" style="font-size:11.5px;line-height:1.45;margin-bottom:9px;padding:8px 10px;border-radius:9px;background:rgba(96,165,250,.10);border:1px solid rgba(96,165,250,.4);color:var(--tx-2,#aab4cc)">🆕 <b style="color:var(--tx,#eaf0ff)">First-time customer.</b> Winning their 2nd order is the highest-value move you'll make today — be warm and personal, no hard sell.</div>` : '';
++    const fbBtn = `<button class="ro-b" data-name="${he(c.name)}" data-phone="${he(c.phone)}" data-order="${he(c.orderNum)}" onclick="fbOpen(this)" title="Log their rating / what they said" style="background:rgba(255,176,32,.14);color:var(--amber,#ffb020);border:1px solid rgba(255,176,32,.34)">⭐ Feedback</button>`;
++    body=`${roPlanHtml(c)}${_newCaution}${_sched}${_loyal}${_msHtml}${_histLine}<div class="ro-nba${c.nba.escalate?' escalate':''}">${c.nba.escalate?'⚠️':'🧠'} <b>${c.nba.action}</b> — ${he(c.nba.reason)}${c.nba.success?` <span class="ro-est">est ${c.nba.success}%</span>`:''}</div>
+       <div class="ro-act">
+         <button class="ro-b ro-b-ai" ${d} onclick="aiDraft(this)" title="AI writes a personal message from their history" style="background:linear-gradient(135deg,#7c5cff,#a78bfa);color:#fff;border:none">✨ AI</button>
+         <button class="ro-b ro-b-wa" ${d} onclick="roMessage(this)">WhatsApp</button>
+         <button class="ro-b ro-b-call" data-phone="${he(c.phone)}" onclick="roCall(this)">Call</button>
+         <button class="ro-b ro-b-ghost" onclick="openDetail('${c.orderNum}')">Order</button>
++        ${fbBtn}
+         ${reviewBtn}
+       </div>
+       <div class="ro-log-label">Log this follow-up (required to mark done):</div>
+@@ -4479,7 +4639,7 @@ function roCard(c){
+   }
+   const riskPill=done?'':roRiskPill(c);
+   return `<div class="ro-card${done?' is-done':''}${stage==='overdue'?' is-overdue':''}">
+-    <div class="ro-card-h"><div class="ro-name">${he(c.name)}</div><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">${riskPill}${pill}</div></div>
++    <div class="ro-card-h"><div class="ro-name">${he(c.name)}</div><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${done?'':roMorePills(c)}${riskPill}${pill}</div></div>
+     <div class="ro-meta">${he(meta)}</div>
+     ${body}
+   </div>`;
+@@ -4521,6 +4681,10 @@ function renderReorder(){
+         <div class="ro-conv-sub">${convN} of ${convD} ${convUnit} · target ${convTarget}%</div>
+       </div>
+       ${m.revenueAtRisk>0?`<div class="ro-riskline" style="margin-top:11px;padding:11px 13px;border:1px solid var(--danger,#ff5c6c);border-radius:12px;background:rgba(255,92,108,.08);font-size:12px;line-height:1.5;color:var(--tx-2,#aab4cc)">🩸 <b style="color:var(--danger,#ff5c6c)">৳${m.revenueAtRisk.toLocaleString()}</b> is slipping away today across <b>${m.atRiskCount}</b> at-risk customer${m.atRiskCount===1?'':'s'} — the list below is sorted so the biggest bleed is on top.</div>`:''}
++      ${(m.dueCount>0||m.rating.avg!=null)?`<div style="margin-top:9px;display:flex;gap:9px;flex-wrap:wrap">
++        ${m.dueCount>0?`<button onclick="roSetChip('hot')" style="flex:1;min-width:150px;text-align:left;padding:10px 12px;border:1px solid var(--green,#34d399);border-radius:11px;background:rgba(52,211,153,.08);font-size:12px;color:var(--tx-2,#aab4cc);cursor:pointer">🔥 <b style="color:var(--green,#34d399)">${m.dueCount}</b> likely to order soon <span style="color:var(--tx-3,#8b94ad)">· tap to see</span></button>`:''}
++        ${m.rating.avg!=null?`<div style="flex:1;min-width:130px;padding:10px 12px;border:1px solid var(--bd,#26304a);border-radius:11px;background:var(--card,#141a2b);font-size:12px;color:var(--tx-2,#aab4cc)">⭐ <b style="color:var(--amber,#ffb020)">${m.rating.avg}</b> avg rating <span style="color:var(--tx-3,#8b94ad)">· ${m.rating.n} logged</span></div>`:''}
++      </div>`:''}
+     </div>`;
+   const stages=[['In progress',r.inflight.length],['Thank you',r.thank.length],['Day 7–8',r.nudge.length],['Standing',r.standing.length],['Win-back',r.winback.length]];
+   const pipe=`<div class="ro-pipe">${stages.map((s,i)=>`<div class="ro-pstage"><div class="ro-pcount">${s[1]}</div><div class="ro-plabel">${s[0]}</div></div>${i<stages.length-1?'<div class="ro-parrow">›</div>':''}`).join('')}</div>`;
+@@ -4550,16 +4714,19 @@ function renderReorder(){
+   const doneList=tasks.filter(c=>roDoneInfo(c.phone,c.stage));
+   const bucketOf=st=>RO_CHIP_STAGES.thanks.includes(st)?'thanks':RO_CHIP_STAGES.follow.includes(st)?'follow':RO_CHIP_STAGES.winback.includes(st)?'winback':'other';
+   const nOf=k=>pending.filter(c=>bucketOf(c.stage)===k).length;
+-  const chips=[['all','All',pending.length],['thanks','🙏 Thank you',nOf('thanks')],['follow','📞 Follow-up',nOf('follow')],['winback','🔄 Win-back',nOf('winback')],['contacted','✓ Contacted',doneList.length]];
++  const hotN=pending.filter(c=>c.due&&c.due.soon).length;
++  const chips=[['all','All',pending.length],['hot','🔥 Likely soon',hotN],['thanks','🙏 Thank you',nOf('thanks')],['follow','📞 Follow-up',nOf('follow')],['winback','🔄 Win-back',nOf('winback')],['contacted','✓ Contacted',doneList.length]];
+   const chipBar=`<div class="ro-chips">${chips.map(([k,l,n])=>`<button class="ro-chip${roChip===k?' on':''}" onclick="roSetChip('${k}')">${l}${n?` <b>${n}</b>`:''}</button>`).join('')}</div>`;
+   let shown, subline;
+   if(roChip==='contacted'){
+     shown=doneList; subline='Already reached — each shows who contacted them, the outcome, and when they return to the queue. Nothing here needs a call.';
++  } else if(roChip==='hot'){
++    shown=pending.filter(c=>c.due&&c.due.soon).sort((a,b)=>(b.due.score-a.due.score)); subline='Customers whose personal rhythm says they’re about to order again — reach them first and catch the sale before they even think of it.';
+   } else {
+     shown=(roChip==='all')?pending:pending.filter(c=>bucketOf(c.stage)===roChip);
+     subline='Everything to do today, highest priority first. Contacted customers move to the ✓ tab until their quiet time ends.';
+   }
+-  const listHtml=shown.length?shown.map(roCard).join(''):`<div class="ro-empty">${roChip==='contacted'?'No one contacted recently.':'All caught up here — nothing due. 🎉'}</div>`;
++  const listHtml=shown.length?shown.map(roCard).join(''):`<div class="ro-empty">${roChip==='contacted'?'No one contacted recently.':roChip==='hot'?'No one flagged as due to order right now.':'All caught up here — nothing due. 🎉'}</div>`;
+   const taskSec=`<div class="ro-sec"><div class="ro-sec-h">Today's list <span class="ro-count">${roChip==='contacted'?doneList.length:shown.length}</span></div>
+     <div class="ro-sec-sub">${subline}</div>
+     ${chipBar}
+diff --git a/supabase/ai-upgrade.sql b/supabase/ai-upgrade.sql
+new file mode 100644
+index 0000000..69b4f9e
+--- /dev/null
++++ b/supabase/ai-upgrade.sql
+@@ -0,0 +1,62 @@
++-- ============================================================================
++-- Velto — data-driven AI upgrade (v64)
++-- Run this ONCE in your Supabase project: Dashboard → SQL Editor → paste → Run.
++-- Creates the two tables the new features need. Safe to re-run (IF NOT EXISTS).
++--   • feedback  — customer ratings + comments (feeds risk + recovery)
++--   • ai_plans  — the AI's decided next-move after each logged follow-up
++-- ============================================================================
++
++-- ---------- 1. Feedback ------------------------------------------------------
++create table if not exists public.feedback (
++  id              uuid primary key default gen_random_uuid(),
++  customer_phone  text,
++  order_number    text,
++  rating          int check (rating between 1 and 5),
++  comment         text,
++  channel         text,
++  created_by_name text,
++  created_at      timestamptz not null default now()
++);
++create index if not exists feedback_phone_idx    on public.feedback (customer_phone);
++create index if not exists feedback_created_idx  on public.feedback (created_at desc);
++
++alter table public.feedback enable row level security;
++
++-- Signed-in staff can read and add feedback. (Mirrors how reorder_actions is used.)
++drop policy if exists feedback_select on public.feedback;
++create policy feedback_select on public.feedback
++  for select to authenticated using (true);
++
++drop policy if exists feedback_insert on public.feedback;
++create policy feedback_insert on public.feedback
++  for insert to authenticated with check (true);
++
++-- ---------- 2. AI plans (the closed loop) -----------------------------------
++create table if not exists public.ai_plans (
++  id              uuid primary key default gen_random_uuid(),
++  customer_phone  text not null,
++  next_channel    text,          -- 'Call' | 'WhatsApp' | 'Wait'
++  next_in_days    int,
++  follow_up_on    date,
++  angle           text,          -- short label of the approach
++  reasoning       text,          -- one line the staff sees
++  message         text,          -- pre-drafted next message
++  source_outcome  text,          -- what the CSR logged that triggered this
++  created_by_name text,
++  created_at      timestamptz not null default now()
++);
++create index if not exists ai_plans_phone_idx   on public.ai_plans (customer_phone);
++create index if not exists ai_plans_created_idx  on public.ai_plans (created_at desc);
++
++alter table public.ai_plans enable row level security;
++
++drop policy if exists ai_plans_select on public.ai_plans;
++create policy ai_plans_select on public.ai_plans
++  for select to authenticated using (true);
++
++drop policy if exists ai_plans_insert on public.ai_plans;
++create policy ai_plans_insert on public.ai_plans
++  for insert to authenticated with check (true);
++
++-- Done. The app auto-detects these tables; until they exist it runs on local
++-- data and simply shows less — it never errors.
+diff --git a/supabase/functions/ai-copilot/index.ts b/supabase/functions/ai-copilot/index.ts
+index 9a232a8..67171a3 100644
+--- a/supabase/functions/ai-copilot/index.ts
++++ b/supabase/functions/ai-copilot/index.ts
+@@ -1,15 +1,17 @@
+-// Velto AI Copilot — drafts a genuinely personal WhatsApp retention message.
++// Velto AI Copilot — two jobs in one function:
++//
++//   mode: "message" (default) → drafts a personal WhatsApp message to send now.
++//   mode: "plan"              → after a CSR logs what a customer said, decides the
++//                               NEXT move: channel, timing, angle, and a ready message.
+ //
+ // The reorder engine in the PWA decides WHO to contact and WHY (stage, cadence,
+-// churn risk). This function decides WHAT to say, in Nazmul's voice, using the
+-// customer's real context. The app always has a template fallback, so this
+-// function may safely return an error and nothing breaks.
++// churn risk, new-customer status). This function decides WHAT to say and, in
++// plan mode, WHEN and HOW to follow up next. The app always has a rule-based
++// fallback, so this function may safely return an error and nothing breaks.
+ //
+ // Deploy:   supabase functions deploy ai-copilot
+ // Secret:   supabase secrets set OPENAI_API_KEY=sk-...
+ // Optional: supabase secrets set OPENAI_MODEL=gpt-4o-mini   (default)
+-//
+-// Called from index.html via:  sb.functions.invoke('ai-copilot', { body: {...} })
+ 
+ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+ 
+@@ -19,7 +21,6 @@ const cors = {
+   "Access-Control-Allow-Methods": "POST, OPTIONS",
+ };
+ 
+-// What each lifecycle stage is trying to achieve — keeps the model on-goal.
+ const STAGE_INTENT: Record<string, string> = {
+   thank: "Thank them warmly for a recent order and gently invite honest feedback. Do NOT sell anything.",
+   nudge: "It's about a week since delivery, so their laundry is piling up again. Warmly offer to book the next pickup. Low pressure.",
+@@ -37,19 +38,21 @@ Deno.serve(async (req) => {
+     if (!key) return json({ error: "OPENAI_API_KEY not set" }, 400);
+ 
+     const b = await req.json().catch(() => ({} as Record<string, unknown>));
++    const mode = String(b.mode ?? "message");
++    const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
+     const first = String(b.name ?? "").trim().split(/\s+/)[0] || "there";
+     const stage = String(b.stage ?? "nudge");
+-    const intent = STAGE_INTENT[stage] ?? STAGE_INTENT.nudge;
+     const lang = String(b.lang ?? "auto");
+     const langRule =
+       lang === "bn"
+-        ? "Write in natural, warm Bangla. Everyday English words that Dhaka customers actually use (pickup, delivery, order) are fine."
++        ? "Write in natural, warm Bangla. Everyday English words Dhaka customers use (pickup, delivery, order) are fine."
+         : lang === "en"
+         ? "Write in warm, natural English."
+         : "Use the tone a Dhaka customer would appreciate — mostly natural English, warm and local; a Bangla word or two is fine only if it feels genuinely natural.";
+ 
+-    // Only surface facts that exist — never force the model to invent context.
++    // Shared context both modes draw on — only real facts, never invented.
+     const facts: string[] = [];
++    if (b.isNew) facts.push("FIRST-TIME customer who has not reordered yet — their 2nd order is critical; be extra warm and careful, never pushy");
+     if (num(b.orderCount)) facts.push(`${num(b.orderCount)} orders so far`);
+     if (num(b.ltv)) facts.push(`lifetime spend about ৳${num(b.ltv)}`);
+     if (num(b.lastValue)) facts.push(`last order about ৳${num(b.lastValue)}`);
+@@ -57,10 +60,60 @@ Deno.serve(async (req) => {
+     if (num(b.cadence)) facts.push(`normally orders roughly every ${num(b.cadence)} days`);
+     if (Array.isArray(b.services) && b.services.length) facts.push(`recent services: ${(b.services as string[]).slice(0, 4).join(", ")}`);
+     if (b.zone) facts.push(`area: ${String(b.zone)}`);
+-    if (b.lastNote) facts.push(`note from the last conversation: "${String(b.lastNote).slice(0, 160)}"`);
+-    if (b.vip) facts.push("this is a high-value / VIP customer");
++    if (b.vip) facts.push("high-value / VIP customer");
+     if (b.riskPct != null) facts.push(`internal churn-risk estimate about ${num(b.riskPct)}%`);
+ 
++    // Full follow-up history — this is what makes each message and plan specific.
++    const hist = Array.isArray(b.history) ? (b.history as Array<Record<string, unknown>>).slice(0, 6) : [];
++    const histLines = hist
++      .map((h) => {
++        const o = String(h.outcome ?? "").trim();
++        const n = String(h.note ?? "").trim();
++        const d = num(h.daysAgo);
++        if (!o && !n) return "";
++        return `- ${d}d ago: ${o}${n ? ` — "${n}"` : ""}`;
++      })
++      .filter(Boolean);
++
++    if (mode === "plan") {
++      const sys = [
++        "You are the retention strategist for Velto, a premium laundry service in Uttara, Dhaka.",
++        "A staff member just logged what a customer said after a follow-up. Decide the single best NEXT move.",
++        "Think like a caring shop owner, not a call centre. Rules of judgement:",
++        "- If they complained or sound unhappy → next channel is a Call, soon, to make it right before any selling.",
++        "- If they already said no / not interested → back off: longer wait, gentle channel, no pressure.",
++        "- If they replied positively / booked → light touch, thank/confirm, don't over-contact.",
++        "- If two or more texts went unanswered → switch to a Call.",
++        "- First-time customers who haven't reordered are the top priority — protect that relationship, keep it warm and personal.",
++        "Return ONLY compact JSON, no prose, matching:",
++        '{"nextChannel":"Call|WhatsApp|Wait","nextInDays":<int 1-60>,"angle":"<=6 word label","reasoning":"one short sentence for the staff","message":"the ready-to-send message for that next touch"}',
++        "The message must obey: 2-4 short sentences, at most one emoji, no invented prices/discounts, warm and handwritten, easy reply at the end.",
++        langRule,
++      ].join("\n");
++      const user = [
++        `Customer first name: ${first}`,
++        `Current lifecycle stage: ${stage}`,
++        b.lastOutcome ? `What the staff just logged: "${String(b.lastOutcome).slice(0, 200)}"` : "",
++        facts.length ? `Context: ${facts.join("; ")}.` : "",
++        histLines.length ? `Recent follow-up history:\n${histLines.join("\n")}` : "",
++      ].filter(Boolean).join("\n");
++
++      const d = await chat(key, model, sys, user, 0.5, 320, true);
++      if (d.error) return json(d, d.status || 502);
++      const parsed = safeJson(d.text);
++      if (!parsed || !parsed.nextChannel) return json({ error: "bad plan json", raw: (d.text || "").slice(0, 200) }, 502);
++      return json({
++        nextChannel: String(parsed.nextChannel).slice(0, 20),
++        nextInDays: clampInt(parsed.nextInDays, 1, 60, 3),
++        angle: String(parsed.angle ?? "").slice(0, 60),
++        reasoning: String(parsed.reasoning ?? "").slice(0, 240),
++        message: String(parsed.message ?? "").slice(0, 900),
++        model,
++      });
++    }
++
++    // --- message mode (default) ---
++    const intent = STAGE_INTENT[stage] ?? STAGE_INTENT.nudge;
+     const sys = [
+       "You are Nazmul, the founder of Velto — a premium laundry and dry-cleaning service in Uttara, Dhaka, Bangladesh.",
+       "You personally write short WhatsApp messages to customers. You sound like a real person who genuinely cares — never like a marketing bot.",
+@@ -68,40 +121,23 @@ Deno.serve(async (req) => {
+       "- 2 to 4 short sentences. Warm, respectful, confident. It must feel handwritten.",
+       "- At most ONE emoji, and only if it feels natural. Usually none.",
+       "- NEVER invent facts, prices, offers, or discounts. Do not promise money off unless explicitly told to.",
+-      "- You may lean on the customer's real context, but naturally — do not recite statistics back at them.",
++      "- Draw on the customer's real context and history, but naturally — do not recite statistics back at them.",
+       "- Always end with an easy, low-pressure way for them to reply or book.",
+-      "- No subject line, no greeting header, no signature block beyond a natural sign-off. Return only the message body.",
++      "- Return only the message body: no subject, no header, no signature block beyond a natural sign-off.",
+       langRule,
+     ].join("\n");
+-
+     const user = [
+       `Customer's first name: ${first}`,
+       `Goal of this message: ${intent}`,
+       facts.length ? `Context you may draw on lightly: ${facts.join("; ")}.` : "",
++      histLines.length ? `What's happened with them recently (use to make it specific, don't recite):\n${histLines.join("\n")}` : "",
+       b.variety ? "Give a fresh alternative phrasing that feels clearly different from a standard template." : "",
+       "Return ONLY the ready-to-send message text.",
+     ].filter(Boolean).join("\n");
+ 
+-    const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
+-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+-      method: "POST",
+-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+-      body: JSON.stringify({
+-        model,
+-        temperature: b.variety ? 0.9 : 0.7,
+-        max_tokens: 240,
+-        messages: [
+-          { role: "system", content: sys },
+-          { role: "user", content: user },
+-        ],
+-      }),
+-    });
+-    if (!r.ok) {
+-      const t = await r.text();
+-      return json({ error: `openai ${r.status}`, detail: t.slice(0, 300) }, 502);
+-    }
+-    const d = await r.json();
+-    const message = String(d?.choices?.[0]?.message?.content ?? "").trim();
++    const d = await chat(key, model, sys, user, b.variety ? 0.9 : 0.7, 240, false);
++    if (d.error) return json(d, d.status || 502);
++    const message = (d.text || "").trim();
+     if (!message) return json({ error: "empty completion" }, 502);
+     return json({ message, sendWindow: sendWindow(stage), model });
+   } catch (e) {
+@@ -109,19 +145,42 @@ Deno.serve(async (req) => {
+   }
+ });
+ 
+-// Best WhatsApp read windows in Dhaka — late morning and early evening.
++async function chat(key: string, model: string, sys: string, user: string, temperature: number, max_tokens: number, jsonMode: boolean) {
++  const body: Record<string, unknown> = {
++    model, temperature, max_tokens,
++    messages: [{ role: "system", content: sys }, { role: "user", content: user }],
++  };
++  if (jsonMode) body.response_format = { type: "json_object" };
++  const r = await fetch("https://api.openai.com/v1/chat/completions", {
++    method: "POST",
++    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
++    body: JSON.stringify(body),
++  });
++  if (!r.ok) {
++    const t = await r.text();
++    return { error: `openai ${r.status}`, detail: t.slice(0, 300), status: 502 as number };
++  }
++  const d = await r.json();
++  return { text: String(d?.choices?.[0]?.message?.content ?? "") };
++}
++
++function safeJson(s: string): Record<string, unknown> | null {
++  try { return JSON.parse(s); } catch { /* try to find a JSON object */ }
++  const m = s.match(/\{[\s\S]*\}/);
++  if (m) { try { return JSON.parse(m[0]); } catch { return null; } }
++  return null;
++}
+ function sendWindow(stage: string): string {
+   if (stage === "thank") return "within 24h of delivery";
+   if (stage === "winback" || stage === "overdue") return "11:00–13:00 or 19:00–21:00 (Dhaka)";
+   return "11:00–12:30 or 19:30–21:00 (Dhaka)";
+ }
+-function num(v: unknown): number {
+-  const n = Number(v);
+-  return Number.isFinite(n) ? n : 0;
++function num(v: unknown): number { const n = Number(v); return Number.isFinite(n) ? n : 0; }
++function clampInt(v: unknown, lo: number, hi: number, dflt: number): number {
++  const n = Math.round(Number(v));
++  if (!Number.isFinite(n)) return dflt;
++  return Math.max(lo, Math.min(hi, n));
+ }
+ function json(o: unknown, status = 200): Response {
+-  return new Response(JSON.stringify(o), {
+-    status,
+-    headers: { ...cors, "Content-Type": "application/json" },
+-  });
++  return new Response(JSON.stringify(o), { status, headers: { ...cors, "Content-Type": "application/json" } });
+ }
+-- 
+2.43.0
+
