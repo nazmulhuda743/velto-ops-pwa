@@ -2481,10 +2481,10 @@ function _glow(doc,cx,cy,r,rgb,base,bg){
   // version rendered in the in-app preview but dropped out (or turned into solid
   // blobs) in the downloaded PDF on viewers that ignore soft transparency.
   bg=bg||[11,16,32];            // header + balance card are both navy
-  const N=16;
+  const N=44;                   // many thin rings → smooth falloff, no visible banding
   for(let i=0;i<N;i++){ const f=i/(N-1);
-    const rad=r*(1-0.86*f);                       // large (dim, outer) → small (bright, inner)
-    const a=Math.min(1, Math.pow(f,1.3)*base*0.95 + 0.02);
+    const rad=r*(1-0.9*f);                        // large (dim, outer) → small (bright, inner)
+    const a=Math.min(1, Math.pow(f,1.35)*base*0.95 + 0.015);
     doc.setFillColor(_lerp(bg[0],rgb[0],a),_lerp(bg[1],rgb[1],a),_lerp(bg[2],rgb[2],a));
     doc.ellipse(cx,cy,rad,rad,'F'); }
 }
@@ -2561,10 +2561,10 @@ async function buildInvoicePdf(s){
   const trow=(k,v,o={})=>{doc.setFont(o.kf||'helvetica',o.bold?'bold':'normal');doc.setFontSize(o.size||10.5);doc.setTextColor(...(o.kc||muted));doc.text(k,tcX+18,rry);doc.setFont(o.vf||'courier',o.bold?'bold':'normal');doc.setFontSize(o.vsize||o.size||10.5);doc.setTextColor(...(o.vc||ink2));doc.text(v,tcX+tcW-18,rry,{align:'right'});rry+=o.gap||20;};
   trow('Subtotal \u00B7 '+qtyN+' item'+(qtyN===1?'':'s'),'Tk '+money(sub));
   trow(svc<0?'Discount':'Service charge',(svc<0?'- Tk '+money(Math.abs(svc)):'Tk '+money(svc)));
-  doc.setDrawColor(...line);doc.setLineWidth(0.8);doc.line(tcX+14,rry-9,tcX+tcW-14,rry-9);
+  doc.setDrawColor(...line);doc.setLineWidth(0.8);doc.line(tcX+14,rry-13,tcX+tcW-14,rry-13);
   trow('Total','Tk '+money(s.total),{bold:true,size:13,vsize:15,kc:navy,vc:navy,vf:'helvetica',gap:24});
-  trow('Paid'+(s.method&&s.method!=='\u2014'?' \u00B7 '+s.method:''),'- Tk '+money(s.paid),{vc:green});
-  doc.setLineDashPattern([1,1.6],0);doc.setDrawColor(...line);doc.line(tcX+14,rry-9,tcX+tcW-14,rry-9);doc.setLineDashPattern([],0);
+  trow('Paid'+(s.method&&s.method!=='\u2014'?' \u00B7 '+s.method:''),(s.paid>0?'- Tk ':'Tk ')+money(s.paid),{vc:green});
+  doc.setLineDashPattern([1,1.6],0);doc.setDrawColor(...line);doc.line(tcX+14,rry-12,tcX+tcW-14,rry-12);doc.setLineDashPattern([],0);
   trow('AMOUNT DUE','Tk '+money(due),{bold:true,size:11,vsize:15,kc:violet,vc:rose,vf:'helvetica'});
   const scx=PADX+72,scy=totY+70,R=56;
   doc.setDrawColor(...sealCol);doc.setLineWidth(2.2);doc.circle(scx,scy,R,'S');doc.setLineWidth(1);doc.circle(scx,scy,R-6,'S');
