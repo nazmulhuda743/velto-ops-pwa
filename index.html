@@ -4640,15 +4640,15 @@ function roCard(c){
     const primary = wantCall
       ? `<button data-name="${he(c.name)}" data-phone="${he(c.phone)}" onclick="roCall(this)" style="width:100%;padding:13px;border:none;border-radius:12px;font-size:14.5px;font-weight:800;color:${priCol};background:${priBg}">📞 Call ${first}</button>`
       : `<button ${d} onclick="aiDraft(this)" style="width:100%;padding:13px;border:none;border-radius:12px;font-size:14.5px;font-weight:800;color:#fff;background:${priBg}">✨ Message ${first}</button>`;
-    const mini='background:var(--card-2,#1b2338);border:1px solid var(--bd,#26304a);color:var(--tx-2,#aab4cc);border-radius:10px;padding:9px 0;font-size:15px;flex:1';
+    const mini='background:var(--card-2,#1b2338);border:1px solid var(--bd,#26304a);color:var(--tx-2,#aab4cc);border-radius:10px;padding:9px 13px;font-size:12.5px;font-weight:700;flex:1;min-width:92px;white-space:nowrap';
     const minis=[];
-    if(wantCall){ minis.push(`<button ${d} onclick="aiDraft(this)" title="AI message" style="${mini}">✨</button>`); minis.push(`<button ${d} onclick="roMessage(this)" title="Template WhatsApp" style="${mini}">💬</button>`); }
-    else { minis.push(`<button data-phone="${he(c.phone)}" onclick="roCall(this)" title="Call" style="${mini}">📞</button>`); minis.push(`<button ${d} onclick="roMessage(this)" title="Template WhatsApp" style="${mini}">💬</button>`); }
-    minis.push(`<button onclick="openDetail('${c.orderNum}')" title="Open order" style="${mini}">🧾</button>`);
-    if(stage==='thank'||stage==='loyal') minis.push(`<button data-name="${he(c.name)}" data-phone="${he(c.phone)}" data-order="${he(c.orderNum)}" onclick="fbOpen(this)" title="Log feedback" style="${mini}">⭐</button>`);
-    if(stage==='thank') minis.push(`<button data-name="${he(c.name)}" data-phone="${he(c.phone)}" onclick="roReview(this)" title="Send 5★ review link" style="${mini}">🌟</button>`);
+    if(wantCall){ minis.push(`<button ${d} onclick="aiDraft(this)" title="AI writes a personal message" style="${mini}">✨ AI message</button>`); minis.push(`<button ${d} onclick="roMessage(this)" title="Ready-made WhatsApp message" style="${mini}">💬 WhatsApp</button>`); }
+    else { minis.push(`<button data-phone="${he(c.phone)}" onclick="roCall(this)" title="Call the customer" style="${mini}">📞 Call</button>`); minis.push(`<button ${d} onclick="roMessage(this)" title="Ready-made WhatsApp message" style="${mini}">💬 WhatsApp</button>`); }
+    minis.push(`<button onclick="openDetail('${c.orderNum}')" title="Open the order" style="${mini}">🧾 Order</button>`);
+    if(stage==='thank'||stage==='loyal') minis.push(`<button data-name="${he(c.name)}" data-phone="${he(c.phone)}" data-order="${he(c.orderNum)}" onclick="fbOpen(this)" title="Log their rating / what they said" style="${mini}">⭐ Feedback</button>`);
+    if(stage==='thank') minis.push(`<button data-name="${he(c.name)}" data-phone="${he(c.phone)}" onclick="roReview(this)" title="Send the Google review link" style="${mini}">🌟 Review</button>`);
     body=`${roPlanHtml(c)}${ctxLine}${reason}
-      <div style="display:flex;flex-direction:column;gap:8px">${primary}<div style="display:flex;gap:7px">${minis.join('')}</div></div>
+      <div style="display:flex;flex-direction:column;gap:8px">${primary}<div style="display:flex;gap:7px;flex-wrap:wrap">${minis.join('')}</div></div>
       <details style="margin-top:11px"><summary style="cursor:pointer;font-size:11.5px;color:var(--tx-3,#79839e);padding:4px 0">✍️ Log outcome — required to mark done</summary>
         <div class="ro-note" style="margin-top:6px"><input class="ro-note-input" type="text" placeholder="What they said — e.g. wants pickup Friday" maxlength="280"><button class="ro-note-save" data-phone="${he(c.phone)}" data-stage="${stage}" data-order="${he(c.orderNum)}" onclick="roSaveNote(this)">Log</button></div>
         <div class="ro-when-row">Next: <select class="ro-when"><option value="1">tomorrow</option><option value="3" selected>in 3 days</option><option value="7">in 1 week</option><option value="14">in 2 weeks</option><option value="30">in 1 month</option></select></div>
