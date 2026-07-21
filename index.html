@@ -1608,6 +1608,14 @@ const npPhotos=[];   // File objects staged for the order being created
 let _stainAns=null;   // null until staff deliberately answers
 let _stains=[];       // [{name,type,files:[],thumbs:[]}]
 const STAIN_TYPES=['Unknown — needs assessment','Oil / Grease','Curry / Turmeric','Tea / Coffee','Ink / Pen','Sweat / Yellowing','Mud / Dirt','Blood','Paint','Rust','Betel / Paan','Makeup / Lipstick','Mehndi / Henna','Glue / Adhesive','Mildew spots','Color bleed / Dye transfer'];
+// Not just stains — garments arrive with real damage too. Logging these at intake
+// protects the shop the same way a stain photo does.
+const CONDITION_TYPES=['Torn / ছেঁড়া','Hole / ফুটো','Frayed edge','Missing button','Broken zip','Loose / open seam (সেলাই খোলা)','Fading / discolouration','Shrunk / misshapen','Stretched out','Pilling / bobbles','Pre-existing damage','Delicate — hand care'];
+function stnOptions(sel){
+  const opt=t=>`<option${t===sel?' selected':''}>${he(t)}</option>`;
+  return `<optgroup label="Stains">${STAIN_TYPES.map(opt).join('')}</optgroup>`
+       + `<optgroup label="Condition / damage">${CONDITION_TYPES.map(opt).join('')}</optgroup>`;
+}
 function stainAns(yes){ _stainAns=!!yes;
   document.getElementById('stnNo').classList.toggle('on',!yes);
   document.getElementById('stnYes').classList.toggle('on',yes);
@@ -1617,7 +1625,9 @@ function stnAdd(){ _stains.push({name:'',type:STAIN_TYPES[0],files:[],thumbs:[]}
 function stnRemove(i){ (_stains[i].thumbs||[]).forEach(u=>{try{URL.revokeObjectURL(u)}catch(e){}}); _stains.splice(i,1); if(_stainAns===true&&!_stains.length) stnAdd(); else stnRender(); }
 function stnName(i,v){ if(_stains[i])_stains[i].name=v; }
 function stnType(i,v){ if(_stains[i])_stains[i].type=v; }
-function stnPhotos(i,input){ const fs=[...(input.files||[])]; for(const f of fs){ _stains[i].files.push(f); let u=''; try{u=URL.createObjectURL(f);}catch(e){} _stains[i].thumbs.push(u); } input.value=''; stnRender(); }
+async function stnPhotos(i,input){ const fs=[...(input.files||[])]; input.value='';
+  for(const f of fs){ let cf=f; try{ cf=await toJpeg(f,1400,0.72); }catch(e){}   // shrink before store/upload
+    if(!_stains[i]) break; _stains[i].files.push(cf); let u=''; try{u=URL.createObjectURL(cf);}catch(e){} _stains[i].thumbs.push(u); stnRender(); } }
 function stnDropPhoto(i,j){ try{URL.revokeObjectURL(_stains[i].thumbs[j])}catch(e){} _stains[i].files.splice(j,1); _stains[i].thumbs.splice(j,1); stnRender(); }
 function stnRender(){ const box=document.getElementById('stnList'); if(!box) return;
   box.innerHTML=_stains.map((s,i)=>`
@@ -1626,10 +1636,11 @@ function stnRender(){ const box=document.getElementById('stnList'); if(!box) ret
        <input class="stn-name" placeholder="Garment — e.g. Blue Panjabi (fabric label #3)" value="${he(s.name)}" oninput="stnName(${i},this.value)"/>
        <button type="button" class="stn-x" onclick="stnRemove(${i})" title="Remove">✕</button>
      </div>
-     <select class="stn-type" onchange="stnType(${i},this.value)">${STAIN_TYPES.map(t=>`<option${t===s.type?' selected':''}>${he(t)}</option>`).join('')}</select>
+     <select class="stn-type" onchange="stnType(${i},this.value)">${stnOptions(s.type)}</select>
      <div class="stn-ph">
        ${s.thumbs.map((u,j)=>`<span class="stn-th"><img src="${u}"/><i onclick="stnDropPhoto(${i},${j})">✕</i></span>`).join('')}
-       <label class="stn-addph">📷 Add photo<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="stnPhotos(${i},this)"/></label>
+       <label class="stn-addph">📷 Camera<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="stnPhotos(${i},this)"/></label>
+       <label class="stn-addph">🖼 Gallery<input type="file" accept="image/*" multiple style="display:none" onchange="stnPhotos(${i},this)"/></label>
      </div>
      ${s.files.length?'':'<div class="stn-warn">No photo yet — a clear photo is the proof that protects everyone.</div>'}
    </div>`).join('')
@@ -1703,7 +1714,9 @@ function fxsAdd(){ _fxs.push({name:'',type:STAIN_TYPES[0],files:[],thumbs:[]}); 
 function fxsRemove(i){ (_fxs[i].thumbs||[]).forEach(u=>{try{URL.revokeObjectURL(u)}catch(e){}}); _fxs.splice(i,1); if(!_fxs.length)fxsAdd(); else fxsRender(); }
 function fxsName(i,v){ if(_fxs[i])_fxs[i].name=v; }
 function fxsType(i,v){ if(_fxs[i])_fxs[i].type=v; }
-function fxsPhotos(i,input){ const fs=[...(input.files||[])]; for(const f of fs){ _fxs[i].files.push(f); let u='';try{u=URL.createObjectURL(f);}catch(e){} _fxs[i].thumbs.push(u);} input.value=''; fxsRender(); }
+async function fxsPhotos(i,input){ const fs=[...(input.files||[])]; input.value='';
+  for(const f of fs){ let cf=f; try{ cf=await toJpeg(f,1400,0.72); }catch(e){}
+    if(!_fxs[i]) break; _fxs[i].files.push(cf); let u='';try{u=URL.createObjectURL(cf);}catch(e){} _fxs[i].thumbs.push(u); fxsRender(); } }
 function fxsDrop(i,j){ try{URL.revokeObjectURL(_fxs[i].thumbs[j])}catch(e){} _fxs[i].files.splice(j,1); _fxs[i].thumbs.splice(j,1); fxsRender(); }
 function fxsRender(){ const box=document.getElementById('fxsList'); if(!box)return;
   box.innerHTML=_fxs.map((s,i)=>`
@@ -1712,10 +1725,11 @@ function fxsRender(){ const box=document.getElementById('fxsList'); if(!box)retu
        <input class="stn-name" placeholder="Garment — e.g. Blue Panjabi (label #3)" value="${he(s.name)}" oninput="fxsName(${i},this.value)"/>
        <button type="button" class="stn-x" onclick="fxsRemove(${i})">✕</button>
      </div>
-     <select class="stn-type" onchange="fxsType(${i},this.value)">${STAIN_TYPES.map(t=>`<option${t===s.type?' selected':''}>${he(t)}</option>`).join('')}</select>
+     <select class="stn-type" onchange="fxsType(${i},this.value)">${stnOptions(s.type)}</select>
      <div class="stn-ph">
        ${s.thumbs.map((u,j)=>`<span class="stn-th"><img src="${u}"/><i onclick="fxsDrop(${i},${j})">✕</i></span>`).join('')}
-       <label class="stn-addph">📷 Add photo<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="fxsPhotos(${i},this)"/></label>
+       <label class="stn-addph">📷 Camera<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="fxsPhotos(${i},this)"/></label>
+       <label class="stn-addph">🖼 Gallery<input type="file" accept="image/*" multiple style="display:none" onchange="fxsPhotos(${i},this)"/></label>
      </div>
      ${s.files.length?'':'<div class="stn-warn">No photo yet — a clear photo is the proof that protects everyone.</div>'}
    </div>`).join('')+`<button type="button" class="stn-more" onclick="fxsAdd()">＋ Add another stained garment</button>`; }
@@ -2594,12 +2608,25 @@ async function buildInvoicePdf(s){
   if(s.stains&&s.stains.length){ try{ await _pdfStainPage(doc,s,{PW,PH,PADX,CW,navy,white,muted,muted2,line,paper,violet,money}); }catch(e){ console.warn('stain page skipped:',e); } }
   return doc;
 }
-async function _pdfImgData(u){
+async function _pdfImgData(u, maxDim=460, quality=0.7){
+  // Downscale + re-encode every image before it goes into the PDF. Stain photos
+  // are shown at ~60pt but were embedded at full camera resolution, so 4–5 of
+  // them made a multi-megabyte invoice. 460px JPEG keeps them crisp at that size
+  // while dropping each image from megabytes to tens of kilobytes.
   if(!u) return null;
-  if(/^data:/.test(u)) return u;
-  try{ const r=await fetch(u); const b=await r.blob();
-    return await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>res(null); fr.readAsDataURL(b); });
-  }catch(e){ return null; }
+  const rawFetch=async()=>{ if(/^data:/.test(u)) return u; try{ const r=await fetch(u); const b=await r.blob();
+    return await new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>res(null); fr.readAsDataURL(b); }); }catch(e){ return null; } };
+  try{
+    const src=await rawFetch(); if(!src) return null;
+    const img=await new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=rej; im.src=src; });
+    let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+    if(!w||!h) return src;
+    const scale=Math.min(1, maxDim/Math.max(w,h));
+    const nw=Math.max(1,Math.round(w*scale)), nh=Math.max(1,Math.round(h*scale));
+    const cv=document.createElement('canvas'); cv.width=nw; cv.height=nh;
+    const ctx=cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,nw,nh); ctx.drawImage(img,0,0,nw,nh);
+    return cv.toDataURL('image/jpeg', quality);
+  }catch(e){ return await rawFetch(); }
 }
 async function _pdfStainPage(doc,s,C){
   const {PW,PH,PADX,CW,navy,muted,line,paper,violet}=C;
@@ -3167,7 +3194,7 @@ function roFirstName(name){
 
 
 /* ==================== WORLD-CLASS PASS (v49) ==================== */
-const APP_VERSION='v97';
+const APP_VERSION='v98';
 /* ---- styled confirm (replaces native confirm) ---- */
 let _vcResolve=null;
 function vConfirm(title,body,okLabel,danger){
