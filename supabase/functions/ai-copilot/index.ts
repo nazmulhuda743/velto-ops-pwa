@@ -40,6 +40,67 @@ Deno.serve(async (req) => {
     const b = await req.json().catch(() => ({} as Record<string, unknown>));
     const mode = String(b.mode ?? "message");
     const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
+
+    // --- vision mode: inspect garment photos and flag wash/dry-clean/iron risk ---
+    if (mode === "vision") {
+      const vmodel = Deno.env.get("OPENAI_VISION_MODEL") || "gpt-4o-mini";
+      const images = Array.isArray(b.images)
+        ? (b.images as string[]).filter((u) => typeof u === "string" && u.length > 10).slice(0, 5)
+        : [];
+      if (!images.length) return json({ error: "no images" }, 400);
+      const TYPES = [
+        "Colour may bleed / run",
+        "Dark or red / indigo — loose dye",
+        "Dust or dirt on collar / cuffs (sets if ironed)",
+        "Delicate — beads / sequins / zari work",
+        "Dry-clean only — no water wash",
+        "Shrinkage risk",
+        "Pre-existing damage may worsen",
+        "Embroidery / print may lift",
+        "Other — see note",
+      ];
+      const vsys = [
+        "You are a senior garment-care inspector for Velto, a premium laundry and dry-cleaner in Uttara, Dhaka.",
+        "You are shown photos of the garments a customer just dropped off. Flag ONLY genuine risks a shop must confirm BEFORE washing, dry-cleaning, or ironing.",
+        "A photo cannot prove colour-fastness — so you flag SUSPICION, never certainty. Recommend a quick test where it applies.",
+        "Look for: deep / saturated or red / maroon / indigo dyes likely to bleed; silk, saree or clearly delicate fabric; beads, sequins, zari or heavy embroidery that can snag or lift; visible dust or dirt on collar / cuffs that will set permanently if ironed; obvious pre-existing damage (tears, holes, weak seams); leather or suede trims; items that read as dry-clean-only.",
+        "Be conservative and honest. A plain white or light cotton shirt, a normal t-shirt, ordinary trousers with nothing visible = NO risk. Never invent a risk to seem useful.",
+        `risk_type MUST be exactly one of: ${TYPES.map((t) => `"${t}"`).join(", ")}.`,
+        "The photos are given in order, indexed from 0. For each risk, set imageIndex to the 0-based photo it is seen in.",
+        'Return ONLY compact JSON: {"risks":[{"garment":"short human name e.g. Red silk saree","risk_type":"<one exact value from the list>","confidence":"high|medium|low","reason":"<=14 words describing what you see","imageIndex":<int>}]}',
+        'If nothing is genuinely risky, return {"risks":[]}.',
+      ].join("\n");
+      const userContent: Array<Record<string, unknown>> = [
+        { type: "text", text: "Inspect these garment photos and flag only genuine wash / dry-clean / iron risks." },
+      ];
+      images.forEach((u) => userContent.push({ type: "image_url", image_url: { url: u } }));
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: vmodel, temperature: 0.2, max_tokens: 800,
+          response_format: { type: "json_object" },
+          messages: [{ role: "system", content: vsys }, { role: "user", content: userContent }],
+        }),
+      });
+      if (!r.ok) { const t = await r.text(); return json({ error: `openai ${r.status}`, detail: t.slice(0, 300) }, 502); }
+      const d = await r.json();
+      const parsed = safeJson(String(d?.choices?.[0]?.message?.content ?? ""));
+      const rawRisks = parsed && Array.isArray(parsed.risks) ? parsed.risks : [];
+      const norm = (t: string) => {
+        const s = String(t || "");
+        return TYPES.find((x) => x.toLowerCase() === s.toLowerCase()) || TYPES.find((x) => s && x.toLowerCase().includes(s.toLowerCase().slice(0, 8))) || "Other — see note";
+      };
+      const risks = rawRisks.slice(0, 12).map((x: Record<string, unknown>) => ({
+        garment: String(x.garment ?? "Garment").slice(0, 70),
+        risk_type: norm(String(x.risk_type ?? "")),
+        confidence: ["high", "medium", "low"].includes(String(x.confidence)) ? String(x.confidence) : "medium",
+        reason: String(x.reason ?? "").slice(0, 160),
+        imageIndex: Number.isFinite(Number(x.imageIndex)) ? Math.max(0, Math.min(images.length - 1, Math.round(Number(x.imageIndex)))) : 0,
+      }));
+      return json({ risks, model: vmodel });
+    }
+
     const first = String(b.name ?? "").trim().split(/\s+/)[0] || "there";
     const stage = String(b.stage ?? "nudge");
     const lang = String(b.lang ?? "auto");
