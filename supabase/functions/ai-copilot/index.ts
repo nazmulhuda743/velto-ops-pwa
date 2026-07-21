@@ -75,6 +75,24 @@ Deno.serve(async (req) => {
       })
       .filter(Boolean);
 
+    // Escalation ladder — the whole point of logging every follow-up is that the
+    // NEXT message must be smarter and more personal than the last. Sending the
+    // same generic nudge 2–3 times is worthless; customers tune it out.
+    const attempt = Math.max(1, num(b.attempt) || histLines.length + 1);
+    const services = Array.isArray(b.services) ? (b.services as string[]).filter(Boolean) : [];
+    const garment = services.slice(0, 3).join(", ");
+    const g = garment ? ` (their ${garment})` : "";
+    const escalation =
+      attempt <= 1
+        ? "This is the FIRST follow-up. Keep it light and friendly — a simple, warm check-in."
+        : attempt === 2
+        ? `This is the SECOND follow-up — the first didn't land. Do NOT repeat it. Make it noticeably more personal: reference what they actually bring us${g}, give one concrete, specific reason this is a good moment to book again, and open in a completely different way.`
+        : attempt === 3
+        ? `This is the THIRD follow-up — two haven't worked. Drop the standard nudge entirely. Write as Nazmul personally, one-to-one: gently acknowledge you've reached out before, be genuine and human, tie it to their specific garments/routine${g}, and make them feel individually noticed — not part of a list.`
+        : `This is follow-up #${attempt} — several haven't worked. Be warm and low-pressure, acknowledge you don't want to keep bothering them, give them an easy out, and make one last genuinely personal invitation tied to their history${g}. Absolutely no generic template language.`;
+    const antiRepeat =
+      "CRITICAL: every follow-up to the same person must be clearly DIFFERENT from the previous ones — new opening line, new angle, and more personal/garment-specific each time. Reusing the same style of message is the fastest way to be ignored, and it loses orders.";
+
     if (mode === "plan") {
       const sys = [
         "You are the retention strategist for Velto, a premium laundry service in Uttara, Dhaka.",
@@ -96,9 +114,11 @@ Deno.serve(async (req) => {
         b.lastOutcome ? `What the staff just logged: "${String(b.lastOutcome).slice(0, 200)}"` : "",
         facts.length ? `Context: ${facts.join("; ")}.` : "",
         histLines.length ? `Recent follow-up history:\n${histLines.join("\n")}` : "",
+        escalation,
+        antiRepeat,
       ].filter(Boolean).join("\n");
 
-      const d = await chat(key, model, sys, user, 0.5, 320, true);
+      const d = await chat(key, model, sys, user, 0.8, 340, true);
       if (d.error) return json(d, d.status || 502);
       const parsed = safeJson(d.text);
       if (!parsed || !parsed.nextChannel) return json({ error: "bad plan json", raw: (d.text || "").slice(0, 200) }, 502);
@@ -131,11 +151,13 @@ Deno.serve(async (req) => {
       `Goal of this message: ${intent}`,
       facts.length ? `Context you may draw on lightly: ${facts.join("; ")}.` : "",
       histLines.length ? `What's happened with them recently (use to make it specific, don't recite):\n${histLines.join("\n")}` : "",
-      b.variety ? "Give a fresh alternative phrasing that feels clearly different from a standard template." : "",
+      escalation,
+      antiRepeat,
+      b.variety ? "Give a fresh alternative phrasing that feels clearly different from anything sent before." : "",
       "Return ONLY the ready-to-send message text.",
     ].filter(Boolean).join("\n");
 
-    const d = await chat(key, model, sys, user, b.variety ? 0.9 : 0.7, 240, false);
+    const d = await chat(key, model, sys, user, b.variety ? 1.0 : 0.85, 260, false);
     if (d.error) return json(d, d.status || 502);
     const message = (d.text || "").trim();
     if (!message) return json({ error: "empty completion" }, 502);
