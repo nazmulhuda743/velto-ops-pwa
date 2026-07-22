@@ -128,7 +128,9 @@ Deno.serve(async (req) => {
       return json({ risks, model: vmodel });
     }
 
-    const first = String(b.name ?? "").trim().split(/\s+/)[0] || "there";
+    // A proper name to address the customer by — skip honorifics ("Mr", "Md",
+    // "Mrs"…) so we never write "Hi Mr", and keep up to two words.
+    const first = cleanName(String(b.name ?? ""));
     const stage = String(b.stage ?? "nudge");
     const lang = String(b.lang ?? "auto");
     const langRule =
@@ -197,7 +199,7 @@ Deno.serve(async (req) => {
         langRule,
       ].join("\n");
       const user = [
-        `Customer first name: ${first}`,
+        `Customer's name (address them by this): ${first}`,
         `Current lifecycle stage: ${stage}`,
         b.lastOutcome ? `What the staff just logged: "${String(b.lastOutcome).slice(0, 200)}"` : "",
         facts.length ? `Context: ${facts.join("; ")}.` : "",
@@ -224,9 +226,14 @@ Deno.serve(async (req) => {
     const intent = STAGE_INTENT[stage] ?? STAGE_INTENT.nudge;
     const sys = [
       "You are Nazmul, the founder of Velto — a premium laundry and dry-cleaning service in Uttara, Dhaka, Bangladesh.",
-      "You personally write short WhatsApp messages to customers. You sound like a real person who genuinely cares — never like a marketing bot.",
+      "You personally text customers on WhatsApp. Sound like a real Dhaka shop owner who knows them — warm, easy, human. NEVER like AI, a template, or marketing.",
+      "Sound human:",
+      "- Text the way a person actually types: short, relaxed, a touch casual. Use contractions (I'll, you're, we've). Opening with 'Hi <name>,' or just their name is perfect.",
+      "- Use their real name exactly as given — never 'Mr' or 'Sir' on its own, and never 'Dear valued customer'.",
+      "- BANNED phrases (they scream AI/marketing): 'we hope this message finds you well', 'we value your business', 'at your earliest convenience', 'rest assured', 'valued customer', 'we are reaching out', 'seamless', 'elevate', 'we understand that'. Never use them.",
+      "- No bullet points, no headings, no perfectly balanced sentences. One genuine thought, like a real text to someone you know.",
       "Hard rules:",
-      "- 2 to 4 short sentences. Warm, respectful, confident. It must feel handwritten.",
+      "- 2 to 4 short sentences. Warm, confident, handwritten.",
       "- At most ONE emoji, and only if it feels natural. Usually none.",
       "- NEVER invent facts, prices, offers, or discounts. Do not promise money off unless explicitly told to.",
       "- Draw on the customer's real context and history, but naturally — do not recite statistics back at them.",
@@ -235,7 +242,7 @@ Deno.serve(async (req) => {
       langRule,
     ].join("\n");
     const user = [
-      `Customer's first name: ${first}`,
+      `Customer's name (address them by this): ${first}`,
       `Goal of this message: ${intent}`,
       facts.length ? `Context you may draw on lightly: ${facts.join("; ")}.` : "",
       histLines.length ? `What's happened with them recently (use to make it specific, don't recite):\n${histLines.join("\n")}` : "",
@@ -284,6 +291,14 @@ function sendWindow(stage: string): string {
   if (stage === "thank") return "within 24h of delivery";
   if (stage === "winback" || stage === "overdue") return "11:00–13:00 or 19:00–21:00 (Dhaka)";
   return "11:00–12:30 or 19:30–21:00 (Dhaka)";
+}
+function cleanName(raw: string): string {
+  const titles = ["mr","mrs","ms","miss","md","mohammad","mohammed","muhammad","mohd","mst","dr","engr","adv","prof","sir","madam","mister","jnaab","jonab","janab"];
+  let parts = String(raw || "").trim().replace(/[.,]/g, "").split(/\s+/).filter(Boolean);
+  while (parts.length > 1 && titles.includes(parts[0].toLowerCase())) parts.shift();
+  // If the whole name was just a title (e.g. "Mr"), fall back gracefully.
+  if (parts.length === 1 && titles.includes(parts[0].toLowerCase())) return "there";
+  return parts.slice(0, 2).join(" ") || "there";
 }
 function num(v: unknown): number { const n = Number(v); return Number.isFinite(n) ? n : 0; }
 function clampInt(v: unknown, lo: number, hi: number, dflt: number): number {
