@@ -41,6 +41,33 @@ Deno.serve(async (req) => {
     const mode = String(b.mode ?? "message");
     const model = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
 
+    // --- brief mode: a sharp, prioritized morning brief for the founder ---
+    if (mode === "brief") {
+      const s = (b.stats ?? {}) as Record<string, unknown>;
+      const owner = String(b.name ?? "Nazmul").trim().split(/\s+/)[0] || "Nazmul";
+      const facts: string[] = [];
+      if (num(s.deliverToday)) facts.push(`${num(s.deliverToday)} orders to deliver today`);
+      if (num(s.overdue)) facts.push(`${num(s.overdue)} deliveries already running late`);
+      if (num(s.collectN)) facts.push(`৳${num(s.collectAmt).toLocaleString()} uncollected across ${num(s.collectN)} orders`);
+      if (num(s.atRisk)) facts.push(`${num(s.atRisk)} repeat customers slipping away${num(s.atRiskAmt) ? ` (about ৳${num(s.atRiskAmt).toLocaleString()} of repeat revenue at risk)` : ""}`);
+      if (num(s.dueSoon)) facts.push(`${num(s.dueSoon)} regulars predicted to reorder soon`);
+      if (num(s.advisory)) facts.push(`${num(s.advisory)} orders awaiting the customer's wash-approval`);
+      if (s.monthRevenue != null && s.monthTarget) facts.push(`month revenue ৳${num(s.monthRevenue).toLocaleString()} against a ৳${num(s.monthTarget).toLocaleString()} target`);
+      if (!facts.length) facts.push("nothing urgent is outstanding");
+      const sys = [
+        "You are the operations chief of Velto, a premium laundry & dry-cleaner in Uttara, Dhaka.",
+        `Write a crisp morning brief to the founder, ${owner}. 2 to 3 sentences, plain and direct, like a sharp right-hand who already did the thinking.`,
+        "Lead with the single most important thing to do FIRST. Velto's revenue is the repeat base — protecting slipping regulars and catching predicted reorders matters as much as today's deliveries.",
+        "Be specific with the numbers given. Never invent facts. No greeting fluff beyond the first word, no emoji, no bullet points — flowing sentences only.",
+        "Return ONLY JSON: {\"brief\":\"...\"}",
+      ].join("\n");
+      const user = `Today's numbers: ${facts.join("; ")}.`;
+      const d = await chat(key, model, sys, user, 0.6, 200, true);
+      if (d.error) return json({ brief: "" }, 200);
+      const parsed = safeJson(d.text);
+      return json({ brief: parsed && parsed.brief ? String(parsed.brief).slice(0, 600) : "" });
+    }
+
     // --- vision mode: inspect garment photos and flag wash/dry-clean/iron risk ---
     if (mode === "vision") {
       const vmodel = Deno.env.get("OPENAI_VISION_MODEL") || "gpt-4o-mini";
