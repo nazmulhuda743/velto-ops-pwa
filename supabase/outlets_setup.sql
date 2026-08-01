@@ -9,7 +9,7 @@
 --   • outlets               — outlet registry: name, contact, review link,
 --                             own number prefix + independent counter.
 --                             Sector 11 keeps VEL-xxxxx untouched;
---                             RUAP starts fresh at VELR-01001.
+--                             RUAP starts fresh at VELR-00001.
 --   • orders.outlet_code    — which outlet owns the order (existing 1,400+
 --                             orders stay Sector 11 via the default).
 --   • activity_log.outlet_code — outlet on the team activity feed.
@@ -55,6 +55,20 @@ begin
 end $$;
 
 -- ---------- 1. Outlets registry --------------------------------------------
+-- If an OLDER, differently-shaped outlets table already exists (from an early
+-- experiment), move it aside as a timestamped backup — never deleted — so the
+-- correct table can be built. Detected by the missing 'code' column.
+do $$
+begin
+  if to_regclass('public.outlets') is not null
+     and not exists (select 1 from information_schema.columns
+                      where table_schema='public' and table_name='outlets'
+                        and column_name='code') then
+    execute 'alter table public.outlets rename to outlets_backup_'||to_char(now(),'YYYYMMDDHH24MISS');
+    raise notice 'Existing outlets table had a different shape — renamed to a backup, building the correct one.';
+  end if;
+end $$;
+
 create table if not exists public.outlets (
   code       text primary key,             -- 'S11' | 'RUAP'
   name       text not null,
@@ -68,6 +82,15 @@ create table if not exists public.outlets (
   created_at timestamptz not null default now()
 );
 
+-- Belt-and-braces: if outlets existed with 'code' but missed newer columns.
+alter table public.outlets add column if not exists tagline    text not null default 'Premium Laundry & Dry Cleaning';
+alter table public.outlets add column if not exists address    text;
+alter table public.outlets add column if not exists phone      text;
+alter table public.outlets add column if not exists review_url text;
+alter table public.outlets add column if not exists prefix     text;
+alter table public.outlets add column if not exists next_no    int;
+alter table public.outlets add column if not exists active     boolean not null default true;
+
 -- Sector 11: keeps its legacy VEL sequence (counter mirrored for future use).
 insert into public.outlets (code, name, prefix, next_no)
 select 'S11', 'Velto Sector 11', 'VEL',
@@ -75,13 +98,17 @@ select 'S11', 'Velto Sector 11', 'VEL',
                    from public.orders where order_number like 'VEL-%'), 1110) + 1
 where not exists (select 1 from public.outlets where code='S11');
 
--- RUAP: fresh independent sequence → first order is VELR-01001.
+-- RUAP: fresh independent sequence → first order is VELR-00001.
 insert into public.outlets (code, name, prefix, next_no)
-select 'RUAP', 'Velto RUAP', 'VELR', 1001
+select 'RUAP', 'Velto RUAP', 'VELR', 1
 where not exists (select 1 from public.outlets where code='RUAP');
 
--- If an earlier draft seeded a different RUAP prefix, correct it (idempotent).
+-- If an earlier draft seeded a different RUAP prefix or start, correct it —
+-- but never touch the counter once real VELR orders exist (idempotent + safe).
 update public.outlets set prefix='VELR' where code='RUAP' and prefix<>'VELR';
+update public.outlets set next_no=1
+ where code='RUAP' and next_no>1
+   and not exists (select 1 from public.orders where order_number like 'VELR-%');
 
 alter table public.outlets enable row level security;
 drop policy if exists outlets_select on public.outlets;
