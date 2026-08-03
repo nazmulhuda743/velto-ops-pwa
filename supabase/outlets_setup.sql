@@ -156,18 +156,26 @@ security definer
 set search_path = public
 as $$
 declare
-  v_no     int;
   v_prefix text;
+  v_no     int;
   v_num    text;
 begin
-  update public.outlets
-     set next_no = next_no + 1
-   where code = p_outlet and active
-  returning next_no - 1, prefix into v_no, v_prefix;
-
-  if v_no is null then
-    return null;                      -- unknown/inactive outlet → caller keeps VEL number
+  select prefix into v_prefix from public.outlets where code = p_outlet and active;
+  if v_prefix is null then
+    return null;                      -- unknown/inactive outlet -> caller keeps the legacy number
   end if;
+
+  -- Next number = max(stored counter, live max for this prefix + 1) — dense,
+  -- gap-free, self-syncing; row lock prevents two orders drawing one number.
+  update public.outlets
+     set next_no = greatest(
+           next_no,
+           coalesce((select max((regexp_match(order_number, '^' || v_prefix || '-(\d+)$'))[1]::int)
+                       from public.orders
+                      where order_number like v_prefix || '-%'), 0) + 1
+         ) + 1
+   where code = p_outlet
+  returning next_no - 1 into v_no;
 
   v_num := v_prefix || '-' || lpad(v_no::text, 5, '0');
 
