@@ -1,6 +1,6 @@
 // Velto Ops service worker — minimal, safe.
 // Bump CACHE when shipping a new version to force fresh assets.
-const CACHE = 'velto-ops-v158';
+const CACHE = 'velto-ops-v159';
 const SHELL = [
   './',
   './index.html',
@@ -98,7 +98,16 @@ self.addEventListener('push', event => {
     data: { url: d.url || './' },
     actions: [{ action: 'open', title: isTask ? 'Open task' : 'View' }]
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil((async () => {
+    await self.registration.showNotification(title, options);
+    // Ping any open app windows so they buzz + chime immediately (task pushes).
+    if (isTask) {
+      try {
+        const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        wins.forEach(w => w.postMessage({ type: 'velto-task-push', body: options.body }));
+      } catch (e) {}
+    }
+  })());
 });
 
 self.addEventListener('notificationclick', event => {
