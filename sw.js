@@ -1,6 +1,6 @@
 // Velto Ops service worker — minimal, safe.
 // Bump CACHE when shipping a new version to force fresh assets.
-const CACHE = 'velto-ops-v151';
+const CACHE = 'velto-ops-v153';
 const SHELL = [
   './',
   './index.html',
@@ -82,18 +82,21 @@ self.addEventListener('push', event => {
   try { d = event.data ? event.data.json() : {}; }
   catch (e) { d = { title: 'Velto', body: event.data ? event.data.text() : '' }; }
   const title = d.title || 'Velto';
+  const isTask = String(d.tag || '').indexOf('task') >= 0;
   const options = {
     body: d.body || '',
     icon: './icon-192.png',
     badge: './badge-96.png',        // monochrome glyph for the status bar
-    tag: d.tag || 'velto-order',    // same tag replaces, no stacking duplicates
+    tag: d.tag || 'velto',          // same tag replaces, no stacking duplicates
     renotify: true,
-    requireInteraction: false,      // auto-dismiss like a modern app, not a sticky card
+    // Demand attention: stay on screen until tapped (Android honours this; iOS ignores it).
+    requireInteraction: (d.requireInteraction != null) ? d.requireInteraction : true,
     silent: false,
-    vibrate: [50, 30, 50],          // a short, soft tap — not an alarm
+    // ~2.5s attention pattern (Android vibrates; iOS PWA ignores custom vibration entirely).
+    vibrate: d.vibrate || [500, 200, 500, 200, 500, 200, 600],
     timestamp: Date.now(),
     data: { url: d.url || './' },
-    actions: [{ action: 'open', title: 'View order' }]
+    actions: [{ action: 'open', title: isTask ? 'Open task' : 'View' }]
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });
