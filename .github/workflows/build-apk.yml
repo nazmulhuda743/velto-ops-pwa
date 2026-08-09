@@ -57,6 +57,17 @@ jobs:
       - name: Apply Velto launcher icons
         run: python3 apk/scripts/gen-icons.py
 
+      - name: Add google-services.json (Firebase / FCM push)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > apk/android/app/google-services.json
+            echo "google-services.json written ($(wc -c < apk/android/app/google-services.json) bytes)"
+          else
+            echo "No GOOGLE_SERVICES_JSON secret set — building without native push (safe)."
+          fi
+
       - name: Capacitor sync
         working-directory: apk
         run: npx cap sync android

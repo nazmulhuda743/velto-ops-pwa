@@ -1,6 +1,6 @@
 // Velto Ops service worker — minimal, safe.
 // Bump CACHE when shipping a new version to force fresh assets.
-const CACHE = 'velto-ops-v164';
+const CACHE = 'velto-ops-v165';
 const SHELL = [
   './',
   './index.html',
