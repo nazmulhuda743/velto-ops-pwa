@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
         android: {
           priority: "HIGH",
           notification: {
-            channel_id: "velto_tasks_v2",    // buzzing channel created on the device
+            channel_id: "velto_tasks_v3",    // native channel with the long buzz pattern
             notification_priority: "PRIORITY_MAX",
           },
         },
