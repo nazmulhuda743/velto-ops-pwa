@@ -10,6 +10,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(VeltoSaver.class);   // Downloads-folder saver bridge
         super.onCreate(savedInstanceState);
         // Task-alert channel with a long, strong vibration pattern. Created
         // natively because the Capacitor JS plugin can't set custom patterns.

@@ -54,8 +54,10 @@ jobs:
         working-directory: apk
         run: npx cap add android
 
-      - name: Install native task-alert channel (long buzz pattern)
-        run: cp apk/native/MainActivity.java apk/android/app/src/main/java/app/velto/ops/MainActivity.java
+      - name: Install native code (buzz channel + Downloads saver)
+        run: |
+          cp apk/native/MainActivity.java apk/android/app/src/main/java/app/velto/ops/MainActivity.java
+          cp apk/native/VeltoSaver.java  apk/android/app/src/main/java/app/velto/ops/VeltoSaver.java
 
       - name: Apply Velto launcher icons
         run: python3 apk/scripts/gen-icons.py
