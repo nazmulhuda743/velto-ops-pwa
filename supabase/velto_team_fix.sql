@@ -11,10 +11,15 @@ alter table public.profiles add column if not exists avatar_url text;
 alter table public.profiles add column if not exists outlet text default 'S11';
 
 -- ROOT CAUSE of "Could not save": an old role CHECK constraint that predates
--- the rider/worker roles rejects them. Replace it with the full role list.
+-- the rider/worker roles rejects them. Normalize stored roles, then replace it.
+-- NOT VALID: enforce for all future writes but tolerate any legacy value that
+-- is still sitting in a row (the SELECT at the end shows what exists).
+update public.profiles set role = lower(trim(role))
+  where role is not null and role <> lower(trim(role));
+
 alter table public.profiles drop constraint if exists profiles_role_check;
 alter table public.profiles add constraint profiles_role_check
-  check (role in ('admin','manager','rider','worker','staff'));
+  check (role in ('admin','manager','rider','worker','staff')) not valid;
 
 -- Heal: rows with active=NULL fail the "active is true" admin check silently.
 update public.profiles set active = true where active is null;
@@ -54,7 +59,10 @@ create policy profiles_update_own on public.profiles
   using (id = auth.uid())
   with check (id = auth.uid() and role = public.my_role());
 
--- VERIFY — should list the three policies and count your admins (≥1).
+-- VERIFY — shows every role in use (send odd ones to Claude), the policies,
+-- and counts your admins (≥1).
+select coalesce(role,'(null)') as role, count(*)::int as people
+  from public.profiles group by 1 order by 2 desc;
 select policyname from pg_policies where tablename = 'profiles' order by 1;
 select 'team fix ready — active admins: '||count(*)::text as status
   from public.profiles where role = 'admin' and active is true;
