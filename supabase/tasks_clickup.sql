@@ -18,6 +18,7 @@ alter table public.tasks add column if not exists assignee_ids   uuid[] not null
 alter table public.tasks add column if not exists assignee_names text[] not null default '{}';
 alter table public.tasks add column if not exists description     text;
 alter table public.tasks add column if not exists subtasks        jsonb not null default '[]';
+alter table public.tasks add column if not exists order_number    text;   -- optional linked order (VEL-…)
 
 -- Backfill existing single-assignee tasks into the arrays.
 update public.tasks
@@ -42,10 +43,12 @@ create table if not exists public.task_comments (
   id          uuid primary key default gen_random_uuid(),
   task_id     uuid not null references public.tasks(id) on delete cascade,
   body        text not null,
+  photo_path  text,                                   -- optional attached photo (order-photos bucket)
   author_id   uuid,
   author_name text,
   created_at  timestamptz not null default now()
 );
+alter table public.task_comments add column if not exists photo_path text;
 create index if not exists task_comments_task_idx on public.task_comments (task_id, created_at);
 
 alter table public.task_comments enable row level security;
