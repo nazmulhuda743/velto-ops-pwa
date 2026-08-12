@@ -28,6 +28,7 @@ drop policy if exists expenses_select on public.expenses;
 create policy expenses_select on public.expenses for select to authenticated using (true);
 drop policy if exists expenses_insert on public.expenses;
 create policy expenses_insert on public.expenses for insert to authenticated with check (true);
+-- Only admins & managers (finance access) may edit or delete an expense.
 drop policy if exists expenses_update on public.expenses;
 create policy expenses_update on public.expenses for update to authenticated using (public.is_manager()) with check (public.is_manager());
 drop policy if exists expenses_delete on public.expenses;
