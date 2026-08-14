@@ -56,6 +56,11 @@ declare
   cons jsonb := 'null'::jsonb; needs jsonb := '[]'::jsonb; stalled int;
   oc text; mname text; dlv int; ontime int; ot numeric; col numeric; resp numeric; brk int; ign int;
   brc int; brl text[]; brh numeric;
+  promise jsonb; verdict jsonb; voices jsonb; ironman jsonb; brief jsonb; best jsonb;
+  sat numeric; sat_n int; complaints int; comp100 numeric; came_back numeric;
+  silent_c int; silent_av numeric;
+  im_pressed int; im_pace numeric; im_rework int; im_pressed_wk int; im_fp numeric; im_loaded numeric; im_hours numeric;
+  takt int := 14;   -- target presses/hr (config later)
 begin
   -- ANDON: WIP per stage (count + oldest age hours)
   select count(*), coalesce(extract(epoch from (now()-min(created_at)))/3600,0) into intake_c,intake_h
@@ -170,13 +175,73 @@ begin
       'why','Delivered money aging past a week — chase collection.', 'age_h', null));
   end if;
 
+  -- PROMISE VS REALITY: quoted turnaround vs actual P90 per service (last 30d)
+  with svc as (
+    select case when service_category @> array['Dry Cleaning'] then 'Dry clean'
+                when service_category @> array['Wash + Iron'] then 'Wash + Iron'
+                else 'Pure iron' end s,
+           extract(epoch from (delivered_at-created_at))/3600 hrs
+    from public.orders where order_status='Delivered' and delivered_at is not null
+      and delivered_at >= now()-interval '30 days' and service_category is not null and array_length(service_category,1)>0),
+  q as (select * from (values ('Wash + Iron',24),('Dry clean',48),('Pure iron',12)) v(s,quoted)),
+  p as (select s, percentile_cont(0.9) within group (order by hrs) p90 from svc group by s)
+  select coalesce(jsonb_agg(jsonb_build_object('service',q.s,'quoted',q.quoted,'p90', round(p.p90),
+      'verdict', case when p.p90 is null then 'no data' when p.p90 <= q.quoted then 'honest'
+                      when p.p90 <= q.quoted*1.2 then 'tight' else 'over-promised' end) order by q.quoted),'[]'::jsonb)
+    into promise from q left join p on p.s=q.s;
+
+  -- CUSTOMER VERDICT
+  select round(avg(rating)::numeric,1), count(*) filter (where rating is not null), count(*) filter (where rating<=2)
+    into sat, sat_n, complaints from public.feedback where created_at >= wk_from and rating is not null;
+  comp100 := case when deliv_c>0 then round(complaints::numeric/deliv_c*100,1) else 0 end;
+  with cohort as (select distinct customer_id from public.orders
+      where customer_id is not null and coalesce(delivered_at,created_at) >= now()-interval '60 days' and coalesce(delivered_at,created_at) < now()-interval '30 days'),
+  ret as (select distinct customer_id from public.orders where customer_id is not null and created_at >= now()-interval '30 days')
+  select case when (select count(*) from cohort)>0 then
+      round((select count(*) from cohort c where exists(select 1 from ret r where r.customer_id=c.customer_id))::numeric
+            /(select count(*) from cohort)*100,1) else null end into came_back;
+  select count(*), coalesce(round(avg(av)),0) into silent_c, silent_av from (
+      select customer_id, avg(coalesce(total_amount,0)) av from public.orders
+      where customer_id is not null and coalesce(order_status,'')<>'Cancelled'
+      group by customer_id having count(*)>=2 and max(created_at) < now()-interval '30 days') s;
+  verdict := jsonb_build_object('came_back',came_back,'satisfaction',sat,'sat_n',sat_n,
+      'complaints_100',comp100,'silent_count',silent_c,'silent_avg',silent_av,'silent_monthly',coalesce(silent_c*silent_av,0));
+
+  -- IN THEIR WORDS: this week's scored calls
+  select coalesce(jsonb_agg(v),'[]'::jsonb) into voices from (
+    select jsonb_build_object('rating',f.rating,'comment',f.comment,
+        'customer', coalesce(nullif(o.name_snapshot,''), f.customer_phone), 'order', f.order_number,
+        'outlet', o.outlet_code, 'caller', f.created_by_name) v
+    from public.feedback f left join public.orders o on o.order_number = f.order_number
+    where f.created_at >= wk_from and coalesce(f.comment,'') <> ''
+    order by f.created_at desc limit 6) z;
+
+  -- IRONMAN · OLI
+  select count(*) into im_pressed from public.orders where iron_ready_at is not null and (iron_ready_at at time zone 'Asia/Dhaka')::date = today;
+  im_hours := greatest(1, extract(epoch from ((now() at time zone 'Asia/Dhaka') - (today + time '09:00')))/3600);
+  im_pace := round(im_pressed / im_hours);
+  select count(*) into im_rework from public.floor_issues where decision='rewash' and created_at >= wk_from;
+  select count(*) into im_pressed_wk from public.orders where iron_ready_at >= wk_from;
+  im_fp := case when im_pressed_wk>0 then round((1 - im_rework::numeric/im_pressed_wk)*100,1) else 100 end;
+  im_loaded := case when takt>0 then round(im_pace/takt*100) else 0 end;
+  ironman := jsonb_build_object('pressed',im_pressed,'pace',im_pace,'takt',takt,'first_pass',im_fp,'queue',iron_c,'loaded',im_loaded);
+
+  -- SUNDAY BRIEF tiles
+  select e into best from jsonb_array_elements(h2h) e order by (e->>'ignores')::int, (e->>'broken')::int limit 1;
+  brief := jsonb_build_object('week', extract(week from now())::int, 'completed_good', ns_rate,
+      'best_name', coalesce(best->>'name',''), 'best_ignores', coalesce((best->>'ignores')::int,0),
+      'top_reason', coalesce((pareto->0->>'reason'),'—'),
+      'top_pct', case when (select coalesce(sum((x->>'count')::int),0) from jsonb_array_elements(pareto) x)>0
+                   then round((pareto->0->>'count')::numeric / (select sum((x->>'count')::int) from jsonb_array_elements(pareto) x)*100) else 0 end);
+
   return jsonb_build_object(
     'in_flight', (select count(*) from public.orders where coalesce(order_status,'') not in ('Delivered','Cancelled')),
     'andon', andon, 'stalled', stalled, 'constraint', cons,
     'north_star', jsonb_build_object('rate',ns_rate,'delta',round(ns_rate-ns_prev,1),'spark',spark),
     'needs_you', needs, 'head2head', h2h,
     'leak', jsonb_build_object('total',leak_t,'b1',leak1,'b2',leak2,'b3',leak3,'by_outlet',leak_out),
-    'pareto', pareto);
+    'pareto', pareto, 'promise', promise, 'verdict', verdict, 'voices', voices,
+    'ironman', ironman, 'brief', brief);
 end $$;
 
 grant execute on function public.cockpit_stats() to authenticated;
