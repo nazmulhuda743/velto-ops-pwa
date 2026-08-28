@@ -1,9 +1,10 @@
 // Velto Ops service worker — minimal, safe.
 // Bump CACHE when shipping a new version to force fresh assets.
-const CACHE = 'velto-ops-v217';
+const CACHE = 'velto-ops-v218';
 const SHELL = [
   './',
   './index.html',
+  './vendor/supabase-js-2.110.6.js',   // v218: auth library self-hosted — sign-in survives any CDN failure
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',
