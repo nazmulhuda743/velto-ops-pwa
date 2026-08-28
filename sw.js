@@ -1,6 +1,8 @@
 // Velto Ops service worker — minimal, safe.
 // Bump CACHE when shipping a new version to force fresh assets.
-const CACHE = 'velto-ops-v219';
+const CACHE = 'velto-ops-v220';
+// Photos cache survives version bumps on purpose — that's the egress saving.
+const MEDIA_CACHE = 'velto-media-v1';
 const SHELL = [
   './',
   './index.html',
@@ -26,7 +28,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== MEDIA_CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -48,6 +50,23 @@ self.addEventListener('fetch', e => {
         return cached || net;
       })
     );
+    return;
+  }
+  // v220 EGRESS SAVER: Supabase Storage objects (customer/expense photos) are
+  // immutable — serve them cache-first, keyed by object path (signed-URL tokens
+  // vary per view but the object doesn't). Each device now downloads a photo
+  // ONCE instead of on every open; this was burning the 5GB free-plan egress.
+  // Only clean CORS 200s are cached (opaque/error responses pass through).
+  if (url.hostname.endsWith('.supabase.co') && url.pathname.indexOf('/storage/v1/object/') >= 0) {
+    e.respondWith((async () => {
+      const key = new Request(url.origin + url.pathname);
+      const c = await caches.open(MEDIA_CACHE);
+      const hit = await c.match(key);
+      if (hit) return hit;
+      const resp = await fetch(req);
+      if (resp && resp.ok && resp.type !== 'opaque') { try { await c.put(key, resp.clone()); } catch (err) {} }
+      return resp;
+    })());
     return;
   }
   // Pass through other cross-origin (Supabase live data, Google Drive, fonts) — never cache.
