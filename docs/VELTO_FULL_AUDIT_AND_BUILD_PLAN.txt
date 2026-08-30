@@ -1,0 +1,412 @@
+================================================================================
+ VELTO OPS — COMPLETE INFRASTRUCTURE AUDIT + STACK DECISION + BUILD PLAN
+ One self-contained file. Hand this to the rebuild project as its charter.
+ Date: 2026-08-30 · App version audited: v220 · Author: engineering audit
+================================================================================
+
+CONTENTS
+  PART A — What Velto runs on today (full infrastructure audit, service by service)
+  PART B — Codebase audit (measured facts + the 8 findings)
+  PART C — The stack decision (exact choices + why, for a 10-year build)
+  PART D — How to build it (concrete step-by-step, commands included)
+  PART E — Migration & cutover plan (phases, exit criteria)
+  PART F — WHAT TO DO — the ordered action checklist
+  PART G — Costs, accounts & keys inventory
+  PART H — The 10-year operating standard + what NOT to do
+
+================================================================================
+ PART A — INFRASTRUCTURE AUDIT: WHAT VELTO RUNS ON TODAY
+================================================================================
+
+A1. HOSTING — Vercel (free/hobby)
+  - Production URL: https://velto-ops-pwa.vercel.app  (Vercel subdomain — NO custom
+    domain. RISK: brand + migration lock-in; the installed PWAs and the Android APK
+    are hard-wired to this URL.)
+  - Deploy model: auto-deploys the GitHub `main` branch to production in ~30s.
+    Any other branch = preview URL only.
+  - NO staging environment. NO deploy gate. Merge = live. RISK: a bad merge is
+    instantly in front of the whole team.
+  - vercel.json sets: Cache-Control no-cache on index.html + sw.js (correct),
+    a Content-Security-Policy (self + jsdelivr + cdnjs scripts; supabase connect),
+    X-Frame-Options DENY, HSTS, nosniff, referrer policy. This is GOOD hygiene —
+    carry it forward.
+
+A2. DATABASE / BACKEND — Supabase (Pro plan, $25/mo)
+  - Project: velto-production, ref erutxtnepbejdxkoimeo
+  - Region: Northeast Asia (Tokyo, ap-northeast-1) — note: team is in Dhaka;
+    Tokyo adds ~70-100ms RTT. Acceptable; Singapore would have been closer.
+    Do NOT migrate the data for this alone — not worth the risk.
+  - Compute: t4g.nano (smallest). Current load: CPU ~5%, RAM ~62%,
+    24/60 connections. Fine for years at this team size.
+  - Database size: ~44 MB / 500 MB. Storage (photos): ~739 MB / 1 GB-tier —
+    WATCH: photo growth; thumbnails + compression discipline required.
+  - Egress history: exceeded the old free plan's 5 GB (5.12 GB) in Aug 2026 →
+    project restricted → company-wide sign-out outage. Root cause: the app
+    re-downloading all data + photos on every open. Now on Pro (250 GB) with the
+    v220 media cache; egress must still be watched monthly.
+  - Backups: Pro includes daily backups — VERIFY they are running (Dashboard →
+    Database → Backups). On the old Free plan there were ZERO backups.
+  - Auth: Supabase GoTrue; email/phone + password (PIN). Roles live in
+    public.profiles (admin/manager/rider/worker/ironman + active + outlet).
+  - Realtime: enabled; used for tasks, task_comments, reorder_actions.
+    NOT enabled/used for orders (statuses sync by 3-min polling — F5).
+  - pg_cron jobs (server-side automation):
+      * velto-task-reminders — every 5 min → calls notify-push edge fn.
+      * order SLA automation — 2x/day (10:00 + 18:00 Dhaka) delivery-chase loop.
+      * velto-weekly-pickup-tasks — daily 10:00 Dhaka (04:00 UTC) creates weekly
+        pickup/delivery/follow-up tasks (idempotent, dedupe_key).
+  - Edge functions deployed: notify-push (web push), fcm-send (Android FCM push),
+    ai-copilot (AI endpoint).
+  - RLS: EVERY table = permissive `authenticated: using(true) with check(true)`.
+    See finding F3 — the single biggest latent risk in the whole system.
+  - Migrations: ~30 hand-written idempotent .sql files in the repo, pasted
+    MANUALLY into the SQL Editor by a human. No migration tooling, no history of
+    what has actually been applied vs not.
+
+A3. SOURCE CONTROL / CI — GitHub
+  - Repo: github.com/nazmulhuda743/velto-ops-pwa (private, personal account).
+  - main = production. No branch protection, no required reviews, no CI checks
+    on code. RISK: any push to main is instantly live.
+  - One GitHub Action: build-apk.yml — compiles the Capacitor Android APK on
+    demand / on apk/** changes. There is NO test/lint/typecheck workflow.
+  - Repo hygiene issues: .DS_Store committed; three stale .patch files at root.
+
+A4. CLIENT DELIVERY — PWA + Android APK
+  - PWA: manifest.webmanifest (standalone, portrait), sw.js service worker:
+    network-first HTML shell, precached assets incl. vendored supabase-js,
+    velto-media-v1 photo cache (survives version bumps), CDN JS cache, Web Push
+    handlers. Version ritual: THREE markers bumped by hand each release
+    (APP_VERSION, badge, sw CACHE) — F6.
+  - Android: Capacitor wrapper (apk/) that loads the LIVE URL (no bundled web
+    code) — app updates without APK reinstall; APK is debug-signed, sideloaded.
+    iPhone users install the PWA from Safari.
+
+A5. THIRD-PARTY / EXTERNAL DEPENDENCIES
+  - supabase-js 2.110.6 — VENDORED in-repo (v218) — good; no CDN dependency.
+  - jsPDF 2.5.1 — still CDN-loaded (jsdelivr → cdnjs fallback, SW-cached after
+    first load). Minor supply risk; vendor it in the rebuild.
+  - Google Fonts: none external — 297 KB of fonts embedded base64 in index.html.
+  - WhatsApp: plain wa.me deep links (no Business API). Zero cost, zero account.
+  - Firebase: FCM project exists for native Android push (fcm-send).
+
+A6. MONITORING / ALERTING — effectively NONE
+  - client_errors table receives uncaught JS errors (version + UA). Nobody reads
+    it proactively. activity_log is a business audit trail (good, keep).
+  - No uptime probe, no Sentry, no usage alerts. The egress incident was
+    discovered by the team being locked out, not by an alert. — F7.
+
+A7. SINGLE POINTS OF FAILURE (ranked)
+  1. The one HTML file: a parse error kills the entire app incl. login (F1).
+  2. Supabase project availability/quota: one project, prod-only, no staging.
+  3. The founder: only person with deploy knowledge + all account access (F8).
+  4. The vercel.app subdomain: hard-wired into every installed client.
+  5. Manual rituals: version markers, SQL pasting, installer-based releases.
+
+================================================================================
+ PART B — CODEBASE AUDIT (measured on v220, not vibes)
+================================================================================
+
+  index.html ................ 1,316,945 bytes / 11,683 lines — the entire app
+  functions (one scope) ..... 729
+  top-level mutable globals . 165
+  inline onclick= ........... 478
+  .innerHTML writes ......... 162  (UI = string concatenation; manual he() escaping)
+  inline style="..." ........ 649
+  getElementById calls ...... 536  (DOM used as a variable store)
+  try{} blocks / EMPTY catch  471 / 273  (over half of error handling deletes errors)
+  setTimeout/setInterval .... 46
+  supabase query call-sites . 143  (data access scattered through UI code)
+  embedded base64 fonts ..... 297 KB (11 faces) inside the HTML
+  tests in repo / CI gates .. 0 / 0
+  framework / types / build . none / none / none
+
+THE 8 FINDINGS (full reasoning in docs/ARCHITECTURE_ASSESSMENT.md):
+  F1  CRITICAL  Single file, single scope — one typo = whole-company outage
+                (already happened this month). No parallel work possible.
+  F2  CRITICAL  Whole-table loading: loadOrders() downloads the ENTIRE orders
+                table on every open/refresh/3-min poll. Three cliffs:
+                egress (already hit → outage), localStorage 5MB cap (~1-2 yrs),
+                low-end Android memory/CPU (~2-3 yrs → the "jamming").
+  F3  HIGH      RLS is using(true) everywhere: ANY logged-in staff account can
+                read/modify/delete ANY row (payments included) via direct API.
+                UI hides buttons; the database checks nothing.
+  F4  HIGH      273 silent empty catches — failures leave no evidence. This is
+                why problems were always "sometimes" and "regularly".
+  F5  MEDIUM    Orders have NO realtime — status sync = 3-minute polling.
+  F6  MEDIUM    Manual release ritual (3 version markers, hand-pasted SQL,
+                no staging, no gates) — multiple real near-misses already.
+  F7  MEDIUM    Nobody is watching: no alerts, no uptime, no usage alarms.
+  F8  STRATEGIC Bus factor = 1. The system's full model lives in one head.
+
+WHAT IS GENUINELY GOOD (carry ALL of this forward):
+  + The domain logic (iron hours-range model, triage ranking, reorder rhythm,
+    payment-aware honorific messaging, promise health) — this IS the product.
+  + The Postgres schema (~30 sound tables, snapshot columns, gap-free numbering
+    RPC, activity_log audit trail, idempotent migrations).
+  + Dhaka-time discipline everywhere (dhakaDateStr()).
+  + Graceful degradation habits; client-side photo compression; offline caches.
+  + v218/v220 auth hardening: vendored lib, watchdogs, health probe, no silent
+    failure states — make this the standard for everything.
+  + docs/PROJECT_BRIEF.md — a complete feature inventory (the parity checklist).
+
+GRADES: Product logic A · Schema B+ · Front-end D · Data flow D+ ·
+        Reliability C− · Security C− · Observability C · Process D ·
+        OVERALL C− ("works by skill and vigilance, not by design")
+
+================================================================================
+ PART C — THE STACK DECISION (exact, chosen for 2036 not 2026)
+================================================================================
+
+PRINCIPLE: boring, typed, mainstream, few moving parts. This is a ~10-seat ops
+system; its excellence must be reliability, not scale theater.
+
+  Language        TypeScript (strict mode)
+  Build           Vite 5+
+  UI framework    React 18+  (SPA — internal tool, no SSR/SEO need)
+  Server state    TanStack Query v5  (replaces 165 globals + all polling)
+  Local UI state  Zustand (only where React state isn't enough)
+  Router          React Router (or TanStack Router)
+  Backend         SUPABASE — KEPT AS-IS (same project, same tables, same auth)
+  DB types        supabase gen types typescript (generated, committed)
+  Validation      Zod at every boundary (DB rows, forms, RPC responses)
+  Styling         Tailwind CSS + design tokens ported from the current dark theme
+  PWA             vite-plugin-pwa (Workbox) — generated SW; version ritual dies;
+                  port the velto-media-v1 photo-cache strategy
+  PDF             jsPDF (vendored via npm, bundled — no CDN)
+  Native          Capacitor (kept) — point the wrapper at the new URL
+  Unit tests      Vitest (domain/ logic, with locking fixtures)
+  E2E tests       Playwright (login, intake, status→Ready→msg, invoice, payment)
+  Lint            ESLint + typescript-eslint; RULE: empty catch blocks are a
+                  build error (no-empty with allowEmptyCatch=false)
+  CI/CD           GitHub Actions: typecheck → lint → unit → e2e → preview.
+                  Protected main; merge = deploy (Vercel)
+  Monitoring      Sentry (both old & new apps, release-tagged, alerts to phone)
+                  + UptimeRobot (or similar) probe + Supabase usage watch
+  Migrations      Supabase CLI (supabase/migrations/), applied by pipeline,
+                  staging project first
+
+THE ONE DECISION THAT MAKES IT SAFE:
+  Rebuild the CLIENT ONLY. The database is the constitution — old v220 and the
+  new app run side-by-side against the SAME Supabase project during migration.
+  Rollback at any moment = open the old URL. No data migration. No downtime.
+
+================================================================================
+ PART D — HOW TO BUILD IT (step-by-step, concrete)
+================================================================================
+
+D0. PREP (once, ~1 hour)
+  1. Create new private repo: github.com/<you>/velto-app
+  2. Create a FREE second Supabase project "velto-staging" (same region) for
+     tests/CI — never point tests at production.
+  3. Sign up Sentry (free tier) — one project "velto".
+  4. Buy a custom domain (e.g. veltoapp.com, ~$12/yr) — the new app launches on
+     it; the old vercel.app URL stays for the legacy app until retirement.
+
+D1. SCAFFOLD (Phase 0, day 1)
+  npm create vite@latest velto-app -- --template react-ts
+  cd velto-app && npm i
+  npm i @supabase/supabase-js @tanstack/react-query zustand zod react-router-dom
+  npm i -D tailwindcss postcss autoprefixer vite-plugin-pwa vitest \
+          @playwright/test eslint @typescript-eslint/parser \
+          @typescript-eslint/eslint-plugin
+  npx tailwindcss init -p
+  npm i @sentry/react
+  npx supabase init
+  npx supabase link --project-ref erutxtnepbejdxkoimeo
+  npx supabase gen types typescript --linked > src/data/database.types.ts
+
+D2. REPO SHAPE (modular monolith — boundaries without microservice theater)
+  src/
+    app/        routing, shell, auth guard, providers
+    domain/     PURE logic, ZERO I/O — port from index.html FIRST, with tests:
+                  iron.ts       (rates, _ironHours/_ironOverflow/_ironBucket;
+                                 fixture: 131 pcs → 13.57–17.9h, overflow 54–72)
+                  triage.ts     (Needs-Action ranking + EXPRESS logic)
+                  reorder.ts    (rhythm/gap detection)
+                  money.ts      (totals, due, payment-aware amount lines)
+                  names.ts      (honorific greeting rules)
+                  dhaka.ts      (dhakaDateStr and friends — constitutional)
+    data/       ALL Supabase access. UI never imports supabase directly.
+                Typed queries, realtime subscriptions, storage, RPC wrappers.
+    features/   orders/ ironfloor/ weekly/ outsource/ customers/ finance/
+                tasks/ reorder/ team/ analytics/ roles/(rider|worker|ironman)
+    ui/         design system: port the dark tokens (bg #05090F, card #0E1B22,
+                accent #12E6C4, good #3FD17A, warn #F5B544, bad #FF6B6B,
+                Space Grotesk / Inter / JetBrains Mono) into Tailwind config.
+  tests/e2e/    Playwright specs for the money paths.
+  supabase/
+    migrations/ import the existing ~30 SQL files as the baseline migration;
+                all future schema change lives here, CI-applied.
+    functions/  port notify-push, fcm-send, ai-copilot verbatim.
+
+D3. NON-NEGOTIABLE ENGINEERING RULES (enforced by config, not memory)
+  - tsconfig strict:true. ESLint: no-empty catches, no-explicit-any.
+  - domain/ imports nothing that does I/O (enforce with eslint import rules).
+  - Every Supabase row validated with Zod at the data/ boundary.
+  - Every feature PR ships: types + at least one test + brief update.
+  - Version = build-injected (git SHA + date). No hand-bumped markers, ever.
+
+D4. DATA-FLOW IMPLEMENTATION (kills F2 + F5)
+  - Live orders query: status NOT IN (Delivered, Cancelled) — a few hundred rows.
+  - History: paginated (.range) on demand. Search: server-side ilike/FTS on
+    order_number, name_snapshot, phone_snapshot.
+  - Realtime: subscribe to postgres_changes on orders + payments → invalidate
+    TanStack Query caches → every device updates in ~1s. Keep a slow (10-min)
+    reconcile as belt-and-braces.
+  - Aggregates in SQL: keep/extend dashboard_counts, dashboard_stats,
+    cockpit_stats; add views/RPCs for score cards + iron-floor rollups.
+  - Offline: TanStack Query persist → IndexedDB (no 5MB wall). Add a small
+    OUTBOX (IndexedDB) for the two field-critical writes — status change and
+    payment — replayed on reconnect. Everything else online-required, labeled.
+  - Photos: keep canvas compression; cap width ~1600px; request thumbnail
+    transforms for lists; media cache in the generated SW.
+
+D5. SECURITY HARDENING (kills F3 — do ON THE LIVE DB, table by table, while
+    the old app still runs; its traffic is your regression test)
+  1. Write role-helper: SECURITY DEFINER fn role() → profiles.role (pattern
+     already exists as is_admin()).
+  2. Replace using(true) per table with role-aware policies:
+       payments, expenses: INSERT-only for staff (no update/delete); reversal
+         stays the existing SECURITY DEFINER RPC.
+       finance tables: SELECT admin+manager only.
+       orders/status: riders/workers update only the columns their job touches.
+       profiles/team: admin-only mutations (already partially done).
+  3. Storage: per-prefix bucket policies.
+  4. Privileged ops (role change, merge, reversal) = RPCs only.
+
+D6. CI PIPELINE (.github/workflows/ci.yml — the jidoka gate)
+  on: pull_request → jobs:
+    typecheck (tsc --noEmit) → lint → vitest run → playwright test (against
+    a Vite preview + velto-staging supabase) → Vercel preview URL comment.
+  Protect main: require the CI check + 1 review (you). Merge → Vercel deploys.
+
+D7. SUPERVISION (kills F7 — the whale watchtower, ~2 hours to set up)
+  - Sentry.init in BOTH apps (add the snippet to v220 too — one <script>);
+    release tagging; alert rule → founder email/phone.
+  - UptimeRobot (free): probe the app URL + supabase auth/v1/health, 1-min.
+  - Supabase usage: check egress/storage weekly; Pro spend-cap ON; calendar
+    reminder until an automated watcher exists.
+  - One-page RUNBOOK.md: auth down / egress spike / bad deploy → exact steps.
+  - Quarterly: restore latest backup to a scratch project. Unrestored backups
+    don't count as backups.
+
+================================================================================
+ PART E — MIGRATION & CUTOVER (strangler-fig, role by role)
+================================================================================
+
+  Freeze v220 to critical-fixes-only the day Phase 1 starts.
+  Both apps share the same database throughout. Rollback = open old URL.
+
+  PHASE 0  Foundation (repo, CI, Sentry, staging, tokens, auth, generated types,
+           domain/ ported WITH locking tests)
+           EXIT: CI blocks a seeded bug; login E2E green; iron-math fixtures pass.
+  PHASE 1  Ironman + Rider homes (Bangla UI), iron parcel flow, deliveries,
+           tasks; realtime on orders.
+           EXIT: Oli + riders work a full week on the new app only.
+  PHASE 2  Orders core: list+triage+search (server-side), detail+journey,
+           status updates, INTAKE, invoice PDF, Ready message.
+           EXIT: managers run real orders end-to-end for a week; invoice +
+           WhatsApp verified on iPhone AND Android.
+  PHASE 3  Money: payments, collections, expenses, P&L, cash recon — behind
+           hardened RLS.
+           EXIT: a month-close reconciles EXACTLY with the old app's numbers.
+  PHASE 4  Intelligence & ops: cockpit home (3 states, 6-card score), Iron
+           Floor + count + alerts, Weekly (+10AM cron), Outsourced, reorder,
+           analytics, team admin, push.
+           EXIT: PROJECT_BRIEF.md feature inventory fully checked off.
+  PHASE 5  Cutover: whole team default; Capacitor repointed; custom domain;
+           old app read-only 90 days at legacy URL, then archived with a tag.
+           EXIT: 30 incident-free days.
+
+  Timeline with AI-agent development + founder testing weekly: ~10–14 weeks.
+  Feature-parity contract: docs/PROJECT_BRIEF.md. Done = checklist done.
+
+================================================================================
+ PART F — WHAT TO DO (ordered action checklist)
+================================================================================
+
+THIS WEEK (before any code):
+  [ ] Upload this file + ARCHITECTURE_ASSESSMENT.md to the repo's docs/ folder.
+  [ ] Verify Supabase Pro daily backups are actually running.
+  [ ] Turn ON Supabase spend cap; note egress weekly until alerts exist.
+  [ ] Add Sentry to the CURRENT v220 app (one script tag) — eyes on prod today.
+  [ ] Set up UptimeRobot probes (app URL + Supabase health).
+  [ ] Enable GitHub branch protection on main (require review) — even for v220.
+  [ ] Create velto-staging Supabase project (free) + Sentry account.
+  [ ] Buy the custom domain.
+  [ ] Freeze v220: critical fixes only from Phase 1 onward.
+
+THEN (the build):
+  [ ] Execute Part D0–D3 (scaffold, structure, rules) — Phase 0.
+  [ ] Port domain/ logic with locking tests FIRST (crown jewels move first).
+  [ ] Phases 1→5 per Part E, each with its exit criterion met before the next.
+  [ ] RLS hardening (D5) lands during Phases 2–3, table by table.
+  [ ] Cut over role-by-role; keep the old URL one tap away until Phase 5 ends.
+
+STANDING (forever):
+  [ ] The 10-year operating standard in Part H, reviewed quarterly.
+
+================================================================================
+ PART G — COSTS, ACCOUNTS & KEYS INVENTORY
+================================================================================
+
+  MONTHLY COSTS (current → target)
+    Supabase Pro ............ $25/mo (includes $10 compute credit; nano covered)
+    Vercel .................. $0 (hobby) — consider Pro ($20/mo) only if team
+                              features/protection needed; not required.
+    GitHub .................. $0 (private repo, personal)
+    Sentry / UptimeRobot .... $0 (free tiers suffice at this scale)
+    Custom domain ........... ~$12/YEAR
+    Firebase FCM ............ $0
+    TOTAL ................... ~$25–26/month. The 10-year build does not need
+                              more money; it needs more discipline.
+
+  ACCOUNTS TO INVENTORY & SECURE (do once):
+    - Supabase org owner (enable 2FA; add a second owner — bus factor)
+    - GitHub repo owner (2FA; add second owner/collaborator)
+    - Vercel project owner (2FA)
+    - Firebase/FCM project owner
+    - Domain registrar (2FA, auto-renew ON)
+  KEYS:
+    - Supabase ANON key: public by design, lives in the client. Fine.
+    - Supabase SERVICE_ROLE key: must exist ONLY in Supabase (cron SQL /
+      edge fn secrets). NEVER in the repo, never in a chat, never client-side.
+    - VAPID web-push keys: edge function secrets.
+    - Rotate any key that has ever been pasted somewhere unsafe.
+
+================================================================================
+ PART H — THE 10-YEAR OPERATING STANDARD + WHAT NOT TO DO
+================================================================================
+
+STANDARD (must stay true forever after cutover):
+   1. main is protected; nothing merges without green CI (types/lint/unit/E2E).
+   2. Zero empty catch blocks — lint-enforced. Every error handled/logged/shown.
+   3. All schema changes = CLI migrations in repo, pipeline-applied, staging 1st.
+   4. Sentry alerts route to a human; 15-min weekly health review.
+   5. Quarterly backup-restore drill. Unrestored backups don't exist.
+   6. Renovate bot updates dependencies monthly — boring mainstream, kept current.
+   7. Every feature ships with types + a test + a line in the brief.
+   8. The runbook stays one page and current.
+   9. Dhaka time, everywhere, always (constitutional).
+  10. No silent failure states — if something is wrong, the system says so,
+      in plain words, to the right person. (The soul of v218/v220, made law.)
+
+DO NOT:
+  x  Microservices, Kubernetes, custom backend — ~10 users; wrong size, decade's
+     enemy is complexity.
+  x  Rewrite the database — the schema is good; harden RLS, keep the data.
+  x  Framework-of-the-month — React+Vite+Postgres will still be boring in 2036.
+  x  Big-bang switch — strangler-fig or nothing; the business can't stop.
+  x  Invent features during migration — parity first (PROJECT_BRIEF.md is the
+     contract); max ONE founder-approved exception per phase.
+  x  Discard the Bangla staff UX, honorific logic, or the design language —
+     they are product, not debt.
+
+================================================================================
+ FIRST INSTRUCTION FOR THE REBUILD PROJECT (paste this to the agent):
+   "Read docs/PROJECT_BRIEF.md, docs/ARCHITECTURE_ASSESSMENT.md and
+    docs/VELTO_FULL_AUDIT_AND_BUILD_PLAN.txt in full. Then execute Phase 0
+    exactly as specified in Part D of the audit file: scaffold, CI gates,
+    then port the domain/ logic with its locking tests before anything else."
+================================================================================
+END OF FILE
