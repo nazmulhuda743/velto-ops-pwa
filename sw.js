@@ -1,6 +1,6 @@
 // Velto Ops service worker — minimal, safe.
 // Bump CACHE when shipping a new version to force fresh assets.
-const CACHE = 'velto-ops-v220';
+const CACHE = 'velto-ops-v221';
 // Photos cache survives version bumps on purpose — that's the egress saving.
 const MEDIA_CACHE = 'velto-media-v1';
 const SHELL = [
